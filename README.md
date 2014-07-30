@@ -3,20 +3,17 @@ BlobSnap
 
 BlobSnap is a snapshot-based backup system built on top of [BlobStash](https://github.com/tsileo/blobstash), designed to provide "time machine" like features.
 
+**Still in early development. Wait for 0.1.0 release.**
+
 ## Features
 
 - Content addressed (with [BLAKE2b](https://blake2.net) as hashing algorithm), files are split into blobs, and retrieved by hash
 - Incremental backups/snapshots thanks to data deduplication
 - A special archive mode, for one-time backup/non-snapshotted backup, but still with dedup
-- Server handles uploading/downloading blobs to/from different storage
-- Client only query the server and send blobs to it (the client take care of chunking/building blobs)
 - Read-only FUSE file system to navigate backups/snapshots
-- Optional encryption (using [go.crypto/nacl secretbox](http://godoc.org/code.google.com/p/go.crypto/nacl))
-- Take snapshot automatically every x minutes, using a separate client-side scheduler (provides Arq/time machine like backup)
-- Possibility to incrementally archive blobs to AWS Glacier (with a recovery command-line tool)
-- Strong test suite (unit tests + integration tests)
+- Take snapshot automatically every x minutes, using a separate client-side scheduler (provides Arq/time machine like backup) **not finished yet**
+- Possibility to incrementally archive blobs to AWS Glacier (see BlobStash docs)
 - Support for backing-up multiple hosts (you can force a different host to split backups into "different buckets")
-- Backend routing, you can define rules to specify where blobs should be stored ("if-meta", "if-host-myhost"...) and setup custom context
 
 Draws inspiration from [Camlistore](camlistore.org) and [bup](https://github.com/bup/bup) (files are split into multiple blobs using a rolling checksum).
 
@@ -66,13 +63,15 @@ The backup scheduler allows you to perform snapshots...
 
 - an Android app to backup Android devices
 - Follow .gitignore file
-- Garbage collection (sparse files support for blob files)
 - A web interface
-- An S3-like HTTP API to store archive
 - Fill an issue!
 
 ## Donate!
 
-[![Flattr this git repo](http://api.flattr.com/button/flattr-badge-large.png)](https://flattr.com/submit/auto?user_id=tsileo&url=https%3A%2F%2Fgithub.com%2Ftsileo%2Fblobstash)
+[![Flattr this git repo](http://api.flattr.com/button/flattr-badge-large.png)](https://flattr.com/submit/auto?user_id=tsileo&url=https%3A%2F%2Fgithub.com%2Ftsileo%2Fblobsnap)
 
 BTC 1HpHxwNUmXfrU9MR9WTj8Mpg1YUEry9MF4
+
+## License
+
+Copyright (c) 2014 Thomas Sileo and contributors. Released under the MIT license.
