@@ -12,8 +12,11 @@ import (
 	"github.com/bitly/go-simplejson"
 
 
+	"github.com/tsileo/blobsnap/snapshot"
+	"github.com/tsileo/blobsnap/fs"
+
 	"github.com/tsileo/blobstash/client"
-	"github.com/tsileo/blobstash/scheduler"
+//	"github.com/tsileo/blobstash/scheduler"
 	"github.com/tsileo/blobstash/config/pathutil"
 )
 
@@ -49,7 +52,7 @@ func main() {
 
 	conf := loadConf("")
 	defaultHost := conf.Get("server").MustString("localhost:9735")
-	ignoredFiles, _ := conf.Get("ignored-files").StringArray()
+	//ignoredFiles, _ := conf.Get("ignored-files").StringArray()
 
 	app.Name = "blobsnap"
 	app.Usage = "BlobSnap command-line tool"
@@ -63,10 +66,16 @@ func main() {
 			Usage:     "put a file/directory",
 			Flags:     append(commonFlags, cli.BoolFlag{"archive", "upload the file/directory as an archive"}),
 			Action: func(c *cli.Context) {
-				cl, _ := client.NewClient(c.String("host"), defaultHost, ignoredFiles)
-				defer cl.Close()
-				b, m, wr, err := cl.Put(&client.Ctx{Namespace: cl.Hostname, Archive: c.Bool("archive")}, c.Args().First())
-				fmt.Printf("b:%+v,m:%+v,wr:%+v,err:%v\n", b, m, wr, err)
+				up, _ := snapshot.NewUploader(defaultHost)
+				if c.String("host") != "" {
+					// Override the hostname if needed
+					up.Client.Hostname = c.String("host")
+				}
+				//cl.SetIgnoredFiles(ignoredFiles)
+				defer up.Close()
+				fmt.Printf("%v", up.Put(c.Args().First()))
+				//b, m, wr, err := cl.Put(&client.Ctx{Namespace: cl.Hostname, Archive: c.Bool("archive")}, c.Args().First())
+				//fmt.Printf("b:%+v,m:%+v,wr:%+v,err:%v\n", b, m, wr, err)
 			},
 		},
 		//{
@@ -80,39 +89,39 @@ func main() {
 		//		}
 		//	},
 		//},
-		{
-			Name:      "restore",
-			Usage:     "Restore a snapshot",
-			Action: func(c *cli.Context) {
-				cl, _ := client.NewClient("", defaultHost, ignoredFiles)
-				defer cl.Close()
-				args := c.Args()
-				snap, meta, rr, err := cl.Get(args[0], args[1])
-				fmt.Printf("snap:%+v,meta:%+v,rr:%+v/err:%v", snap, meta, rr, err)
-			},
-		},
 		//{
-		//	Name:  "mount",
-		//	Usage: "Mount the read-only filesystem to the given path",
+		//	Name:      "restore",
+		//	Usage:     "Restore a snapshot",
 		//	Action: func(c *cli.Context) {
 		//		cl, _ := client.NewClient("", defaultHost, ignoredFiles)
-		//		stop := make(chan bool, 1)
-		//		stopped := make(chan bool, 1)
-		//		fs.Mount(cl, c.Args().First(), stop, stopped)
+		//		defer cl.Close()
+		//		args := c.Args()
+		//		snap, meta, rr, err := cl.Get(args[0], args[1])
+		//		fmt.Printf("snap:%+v,meta:%+v,rr:%+v/err:%v", snap, meta, rr, err)
 		//	},
 		//},
 		{
-			Name:      "scheduler",
-			ShortName: "sched",
-			Usage:     "Start the backup scheduler",
-			Flags:     commonFlags,
+			Name:  "mount",
+			Usage: "Mount the read-only filesystem to the given path",
 			Action: func(c *cli.Context) {
-				cl, _ := client.NewClient(c.String("host"), defaultHost, ignoredFiles)
-				defer cl.Close()
-				d := scheduler.New(cl)
-				d.Run()
+				cl, _ := client.New(defaultHost)
+				stop := make(chan bool, 1)
+				stopped := make(chan bool, 1)
+				fs.Mount(cl, c.Args().First(), stop, stopped)
 			},
 		},
+		//{
+		//	Name:      "scheduler",
+		//	ShortName: "sched",
+		//	Usage:     "Start the backup scheduler",
+		//	Flags:     commonFlags,
+		//	Action: func(c *cli.Context) {
+		//		cl, _ := client.NewClient(c.String("host"), defaultHost, ignoredFiles)
+		//		defer cl.Close()
+		//		d := scheduler.New(cl)
+		//		d.Run()
+		//	},
+		//},
 	}
 	app.Run(os.Args)
 }
