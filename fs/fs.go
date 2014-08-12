@@ -31,6 +31,25 @@ import (
 	"github.com/tsileo/blobstash/client/ctx"
 )
 
+type DirType int
+
+const (
+	Root DirType = iota
+	HostRoot
+	HostLatest
+	FakeDir
+)
+
+func (dt DirType) String() string {
+	switch dt {
+	case Root:
+		return "Root"
+	case FakeDir:
+		return "FakeDir"
+	}
+	return ""
+}
+
 // Mount the filesystem to the given mountpoint
 func Mount(client *client.Client, mountpoint string, stop <-chan bool, stopped chan<- bool) {
 	c, err := fuse.Mount(mountpoint)
@@ -91,9 +110,7 @@ func (fs *FS) Root() (fs.Node, fuse.Error) {
 }
 
 func NewRootDir(fs *FS) (d *Dir) {
-	d = NewDir(fs, "root", &ctx.Ctx{}, "", "", os.ModeDir)
-	d.Root = true
-	d.fs = fs
+	d = NewDir(fs, Root, "root", &ctx.Ctx{}, "", "", os.ModeDir)
 	return d
 }
 type Node struct {
@@ -118,6 +135,7 @@ func (n *Node) Setattr(req *fuse.SetattrRequest, resp *fuse.SetattrResponse, int
 
 type Dir struct {
 	Node
+	Type DirType
 	Root           bool
 	RootHost       bool
 	RootArchives   bool
@@ -134,8 +152,9 @@ type Dir struct {
 
 }
 
-func NewDir(cfs *FS, name string, cctx *ctx.Ctx, ref string, modTime string, mode os.FileMode) (d *Dir) {
+func NewDir(cfs *FS, dtype DirType, name string, cctx *ctx.Ctx, ref string, modTime string, mode os.FileMode) (d *Dir) {
 	d = &Dir{}
+	d.Type = dtype
 	d.Ctx = cctx
 	d.Node = Node{}
 	d.Mode = os.ModeDir
@@ -159,7 +178,7 @@ func (d *Dir) readDir() (out []fuse.Dirent, ferr fuse.Error) {
 			d.Children[meta.Name] = NewFile(d.fs, meta.Name, d.Ctx, meta.Ref, meta.Size, meta.ModTime, os.FileMode(meta.Mode))
 		} else {
 			dirent = fuse.Dirent{Name: meta.Name, Type: fuse.DT_Dir}
-			d.Children[meta.Name] = NewDir(d.fs, meta.Name, d.Ctx, meta.Ref, meta.ModTime, os.FileMode(meta.Mode))
+			d.Children[meta.Name] = NewDir(d.fs, FakeDir, meta.Name, d.Ctx, meta.Ref, meta.ModTime, os.FileMode(meta.Mode))
 		}
 		out = append(out, dirent)
 	}
@@ -167,7 +186,7 @@ func (d *Dir) readDir() (out []fuse.Dirent, ferr fuse.Error) {
 }
 
 func NewFakeDir(cfs *FS, name string, cctx *ctx.Ctx, ref string) (d *Dir) {
-	d = NewDir(cfs, name, cctx, ref, "", os.ModeDir)
+	d = NewDir(cfs, FakeDir, name, cctx, ref, "", os.ModeDir)
 	d.Children = make(map[string]fs.Node)
 	d.FakeDir = true
 	return
@@ -183,8 +202,31 @@ func (d *Dir) Lookup(name string, intr fs.Intr) (fs fs.Node, err fuse.Error) {
 }
 
 func (d *Dir) ReadDir(intr fs.Intr) (out []fuse.Dirent, err fuse.Error) {
-	switch {
-	case d.FakeDir:
+	switch d.Type{
+	case Root:
+		d.Children = make(map[string]fs.Node)
+		con := d.fs.Client.ConnWithCtx(d.Ctx)
+		defer con.Close()
+		hosts, err := d.fs.Client.Smembers(con, "blobsnap:hostnames")
+		if err != nil {
+			panic("failed to fetch hosts")
+		}
+		for _, host := range hosts {
+			dirent := fuse.Dirent{Name: host, Type: fuse.DT_Dir}
+			out = append(out, dirent)
+			d.Children[host] = NewDir(d.fs, HostRoot, host, d.Ctx, "", "", os.ModeDir)
+		}
+		return out, err
+	case HostRoot:
+		d.Children = make(map[string]fs.Node)
+		dirent := fuse.Dirent{Name: "latest", Type: fuse.DT_Dir}
+		out = append(out, dirent)
+		d.Children["latest"] = NewDir(d.fs, HostLatest, "latest", d.Ctx, "", "", os.ModeDir)
+		return out, err
+	case Latest:
+		// TODO a Lua script to gather the LLAST of SMEMBERS
+		return out, err
+	case FakeDir:
 		d.Children = make(map[string]fs.Node)
 		//meta, _ := client.NewMetaFromDB(d.fs.Client.Pool, d.Ref)
 		log.Printf("FakeDir/ctx:%v", d.Ctx)
@@ -198,7 +240,7 @@ func (d *Dir) ReadDir(intr fs.Intr) (out []fuse.Dirent, err fuse.Error) {
 			out = append(out, dirent)
 		} else {
 			dirent := fuse.Dirent{Name: meta.Name, Type: fuse.DT_Dir}
-			d.Children[meta.Name] = NewDir(d.fs, meta.Name, d.Ctx, meta.Ref, meta.ModTime, os.FileMode(meta.Mode))
+			d.Children[meta.Name] = NewDir(d.fs, FakeDir, meta.Name, d.Ctx, meta.Ref, meta.ModTime, os.FileMode(meta.Mode))
 			out = append(out, dirent)
 		}
 		return out, nil
