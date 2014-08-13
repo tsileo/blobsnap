@@ -19,12 +19,14 @@ import (
 	"os/signal"
 	"time"
 	_ "fmt"
+	"strconv"
 
 	"bazil.org/fuse"
 	"bazil.org/fuse/fs"
 
 	"github.com/jinzhu/now"
 
+	"github.com/tsileo/blobsnap/snapshot"
 	"github.com/tsileo/blobstash/client"
 
 	"github.com/tsileo/blobstash/client/clientutil"
@@ -34,7 +36,8 @@ import (
 type DirType int
 
 const (
-	Root DirType = iota
+	BasicDir DirType = iota
+	Root
 	HostRoot
 	HostLatest
 	FakeDir
@@ -170,8 +173,15 @@ func NewDir(cfs *FS, dtype DirType, name string, cctx *ctx.Ctx, ref string, modT
 func (d *Dir) readDir() (out []fuse.Dirent, ferr fuse.Error) {
 	con := d.fs.Client.ConnWithCtx(d.Ctx)
 	defer con.Close()
-	//for _, meta := range d.fs.Client.Dirs.Get(con, d.Ref).() {
-	for _, meta := range []*clientutil.Meta{} {
+	metaHashes, err := d.fs.Client.Smembers(con, d.Ref)
+	if err != nil {
+		panic(err)
+	}
+	for _, hash := range metaHashes {
+		meta := clientutil.NewMeta()
+		if err := d.fs.Client.HscanStruct(con, hash, meta); err != nil {
+			panic(err)
+		}
 		var dirent fuse.Dirent
 		if meta.Type == "file" {
 			dirent = fuse.Dirent{Name: meta.Name, Type: fuse.DT_File}
@@ -223,17 +233,41 @@ func (d *Dir) ReadDir(intr fs.Intr) (out []fuse.Dirent, err fuse.Error) {
 		out = append(out, dirent)
 		d.Children["latest"] = NewDir(d.fs, HostLatest, "latest", d.Ctx, "", "", os.ModeDir)
 		return out, err
-	case Latest:
-		// TODO a Lua script to gather the LLAST of SMEMBERS
+	case HostLatest:
+		log.Printf("HostLatest")
+		snapshots, herr := snapshot.HostLatest("nuc-server")
+		if herr != nil {
+			panic(herr)
+		}
+		for _, data := range snapshots["snapshots"].([]interface{}) {
+			meta := data.(map[string]interface{})
+			//metaHash := meta["hash"].(string)
+			metaMode, _ := strconv.Atoi(meta["mode"].(string))
+			metaName := meta["name"].(string)
+			metaRef := meta["ref"].(string)
+			metaMtime := meta["mtime"].(string)
+			if meta["type"] == "file" {
+				dirent := fuse.Dirent{Name: metaName, Type: fuse.DT_File}
+				metaSize, _ := strconv.Atoi(meta["size"].(string))
+				d.Children[metaName] = NewFile(d.fs, metaName, d.Ctx, metaRef, metaSize, metaMtime, os.FileMode(uint32(metaMode)))
+				out = append(out, dirent)
+			} else {
+				dirent := fuse.Dirent{Name: metaName, Type: fuse.DT_Dir}
+				d.Children[metaName] = NewDir(d.fs, BasicDir, metaName, d.Ctx, metaRef, metaMtime, os.FileMode(metaMode))
+				out = append(out, dirent)
+			}
+		}
 		return out, err
 	case FakeDir:
 		d.Children = make(map[string]fs.Node)
 		//meta, _ := client.NewMetaFromDB(d.fs.Client.Pool, d.Ref)
-		log.Printf("FakeDir/ctx:%v", d.Ctx)
+		log.Printf("FakeDir %v/ctx:%v", d.Ref, d.Ctx)
 		con := d.fs.Client.ConnWithCtx(d.Ctx)
 		defer con.Close()
-		//meta := d.fs.Client.Metas.Get(con, d.Ref).(*client.Meta)
 		meta := clientutil.NewMeta()
+		if err := d.fs.Client.HscanStruct(con, d.Ref, meta); err != nil {
+			panic(err)
+		}
 		if meta.Type == "file" {
 			dirent := fuse.Dirent{Name: meta.Name, Type: fuse.DT_File}
 			d.Children[meta.Name] = NewFile(d.fs, meta.Name, d.Ctx, meta.Ref, meta.Size, meta.ModTime, os.FileMode(meta.Mode))
