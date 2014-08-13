@@ -40,15 +40,18 @@ const (
 	Root
 	HostRoot
 	HostLatest
-	FakeDir
 )
 
 func (dt DirType) String() string {
 	switch dt {
 	case Root:
 		return "Root"
-	case FakeDir:
-		return "FakeDir"
+	case BasicDir:
+		return "BasicDir"
+	case HostRoot:
+		return "HostRoot"
+	case HostLatest:
+		return "HostLatest"
 	}
 	return ""
 }
@@ -122,7 +125,6 @@ type Node struct {
 	Ref  string
 	Size uint64
 	ModTime string
-	//Mode uint32
 	fs   *FS
 }
 
@@ -139,20 +141,8 @@ func (n *Node) Setattr(req *fuse.SetattrRequest, resp *fuse.SetattrResponse, int
 type Dir struct {
 	Node
 	Type DirType
-	Root           bool
-	RootHost       bool
-	RootArchives   bool
-	Latest         bool
-	Snapshots      bool
-	SnapshotDir    bool
-	FakeDir        bool
-	AtRoot         bool
-	AtDir          bool
-	FakeDirContent []fuse.Dirent
 	Children       map[string]fs.Node
-	SnapKey        string
 	Ctx            *ctx.Ctx
-
 }
 
 func NewDir(cfs *FS, dtype DirType, name string, cctx *ctx.Ctx, ref string, modTime string, mode os.FileMode) (d *Dir) {
@@ -188,17 +178,10 @@ func (d *Dir) readDir() (out []fuse.Dirent, ferr fuse.Error) {
 			d.Children[meta.Name] = NewFile(d.fs, meta.Name, d.Ctx, meta.Ref, meta.Size, meta.ModTime, os.FileMode(meta.Mode))
 		} else {
 			dirent = fuse.Dirent{Name: meta.Name, Type: fuse.DT_Dir}
-			d.Children[meta.Name] = NewDir(d.fs, FakeDir, meta.Name, d.Ctx, meta.Ref, meta.ModTime, os.FileMode(meta.Mode))
+			d.Children[meta.Name] = NewDir(d.fs, BasicDir, meta.Name, d.Ctx, meta.Ref, meta.ModTime, os.FileMode(meta.Mode))
 		}
 		out = append(out, dirent)
 	}
-	return
-}
-
-func NewFakeDir(cfs *FS, name string, cctx *ctx.Ctx, ref string) (d *Dir) {
-	d = NewDir(cfs, FakeDir, name, cctx, ref, "", os.ModeDir)
-	d.Children = make(map[string]fs.Node)
-	d.FakeDir = true
 	return
 }
 
@@ -222,20 +205,19 @@ func (d *Dir) ReadDir(intr fs.Intr) (out []fuse.Dirent, err fuse.Error) {
 			panic("failed to fetch hosts")
 		}
 		for _, host := range hosts {
-			dirent := fuse.Dirent{Name: host, Type: fuse.DT_Dir}
-			out = append(out, dirent)
-			d.Children[host] = NewDir(d.fs, HostRoot, host, d.Ctx, "", "", os.ModeDir)
+			out = append(out, fuse.Dirent{Name: host, Type: fuse.DT_Dir})
+			d.Children[host] = NewDir(d.fs, HostRoot, host, d.Ctx, host, "", os.ModeDir)
 		}
 		return out, err
 	case HostRoot:
 		d.Children = make(map[string]fs.Node)
 		dirent := fuse.Dirent{Name: "latest", Type: fuse.DT_Dir}
 		out = append(out, dirent)
-		d.Children["latest"] = NewDir(d.fs, HostLatest, "latest", d.Ctx, "", "", os.ModeDir)
+		d.Children["latest"] = NewDir(d.fs, HostLatest, "latest", d.Ctx, d.Ref, "", os.ModeDir)
 		return out, err
 	case HostLatest:
 		log.Printf("HostLatest")
-		snapshots, herr := snapshot.HostLatest("nuc-server")
+		snapshots, herr := snapshot.HostLatest(d.Ref)
 		if herr != nil {
 			panic(herr)
 		}
@@ -258,26 +240,6 @@ func (d *Dir) ReadDir(intr fs.Intr) (out []fuse.Dirent, err fuse.Error) {
 			}
 		}
 		return out, err
-	case FakeDir:
-		d.Children = make(map[string]fs.Node)
-		//meta, _ := client.NewMetaFromDB(d.fs.Client.Pool, d.Ref)
-		log.Printf("FakeDir %v/ctx:%v", d.Ref, d.Ctx)
-		con := d.fs.Client.ConnWithCtx(d.Ctx)
-		defer con.Close()
-		meta := clientutil.NewMeta()
-		if err := d.fs.Client.HscanStruct(con, d.Ref, meta); err != nil {
-			panic(err)
-		}
-		if meta.Type == "file" {
-			dirent := fuse.Dirent{Name: meta.Name, Type: fuse.DT_File}
-			d.Children[meta.Name] = NewFile(d.fs, meta.Name, d.Ctx, meta.Ref, meta.Size, meta.ModTime, os.FileMode(meta.Mode))
-			out = append(out, dirent)
-		} else {
-			dirent := fuse.Dirent{Name: meta.Name, Type: fuse.DT_Dir}
-			d.Children[meta.Name] = NewDir(d.fs, FakeDir, meta.Name, d.Ctx, meta.Ref, meta.ModTime, os.FileMode(meta.Mode))
-			out = append(out, dirent)
-		}
-		return out, nil
 	}
 	return d.readDir()
 }
@@ -299,8 +261,6 @@ func NewFile(fs *FS, name string, cctx *ctx.Ctx, ref string, size int, modTime s
 	f.fs = fs
 	return f
 }
-
-// TODO(tsileo) handle release request and close FakeFile if needed?
 
 func (f *File) Attr() fuse.Attr {
 	return fuse.Attr{Inode: 2, Mode: 0444, Size: f.Size}
