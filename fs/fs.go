@@ -15,6 +15,7 @@ package fs
 import (
 	"io"
 	"log"
+	"path/filepath"
 	"os"
 	"os/signal"
 	"time"
@@ -40,6 +41,9 @@ const (
 	Root
 	HostRoot
 	HostLatest
+	HostSnapshots
+	SnapshotDir
+	SnapshotsDir
 )
 
 func (dt DirType) String() string {
@@ -52,6 +56,12 @@ func (dt DirType) String() string {
 		return "HostRoot"
 	case HostLatest:
 		return "HostLatest"
+	case HostSnapshots:
+		return "HostSnapshots"
+	case SnapshotsDir:
+		return "SnapshotsDir"
+	case SnapshotDir:
+		return "SnapshotDir"
 	}
 	return ""
 }
@@ -116,7 +126,7 @@ func (fs *FS) Root() (fs.Node, fuse.Error) {
 }
 
 func NewRootDir(fs *FS) (d *Dir) {
-	d = NewDir(fs, Root, "root", &ctx.Ctx{}, "", "", os.ModeDir)
+	d = NewDir(fs, Root, "root", &ctx.Ctx{}, "", "", os.ModeDir, "")
 	return d
 }
 type Node struct {
@@ -125,6 +135,7 @@ type Node struct {
 	Ref  string
 	Size uint64
 	ModTime string
+	Extra string
 	fs   *FS
 }
 
@@ -145,7 +156,7 @@ type Dir struct {
 	Ctx            *ctx.Ctx
 }
 
-func NewDir(cfs *FS, dtype DirType, name string, cctx *ctx.Ctx, ref string, modTime string, mode os.FileMode) (d *Dir) {
+func NewDir(cfs *FS, dtype DirType, name string, cctx *ctx.Ctx, ref string, modTime string, mode os.FileMode, extra string) (d *Dir) {
 	d = &Dir{}
 	d.Type = dtype
 	d.Ctx = cctx
@@ -157,6 +168,7 @@ func NewDir(cfs *FS, dtype DirType, name string, cctx *ctx.Ctx, ref string, modT
 	d.ModTime = modTime
 	d.Mode = os.FileMode(mode)
 	d.Children = make(map[string]fs.Node)
+	d.Extra = extra
 	return
 }
 
@@ -178,7 +190,7 @@ func (d *Dir) readDir() (out []fuse.Dirent, ferr fuse.Error) {
 			d.Children[meta.Name] = NewFile(d.fs, meta.Name, d.Ctx, meta.Ref, meta.Size, meta.ModTime, os.FileMode(meta.Mode))
 		} else {
 			dirent = fuse.Dirent{Name: meta.Name, Type: fuse.DT_Dir}
-			d.Children[meta.Name] = NewDir(d.fs, BasicDir, meta.Name, d.Ctx, meta.Ref, meta.ModTime, os.FileMode(meta.Mode))
+			d.Children[meta.Name] = NewDir(d.fs, BasicDir, meta.Name, d.Ctx, meta.Ref, meta.ModTime, os.FileMode(meta.Mode), "")
 		}
 		out = append(out, dirent)
 	}
@@ -195,6 +207,7 @@ func (d *Dir) Lookup(name string, intr fs.Intr) (fs fs.Node, err fuse.Error) {
 }
 
 func (d *Dir) ReadDir(intr fs.Intr) (out []fuse.Dirent, err fuse.Error) {
+	log.Printf("ReadDir %v", d)
 	switch d.Type{
 	case Root:
 		d.Children = make(map[string]fs.Node)
@@ -206,14 +219,15 @@ func (d *Dir) ReadDir(intr fs.Intr) (out []fuse.Dirent, err fuse.Error) {
 		}
 		for _, host := range hosts {
 			out = append(out, fuse.Dirent{Name: host, Type: fuse.DT_Dir})
-			d.Children[host] = NewDir(d.fs, HostRoot, host, d.Ctx, host, "", os.ModeDir)
+			d.Children[host] = NewDir(d.fs, HostRoot, host, d.Ctx, host, "", os.ModeDir, "")
 		}
 		return out, err
 	case HostRoot:
 		d.Children = make(map[string]fs.Node)
-		dirent := fuse.Dirent{Name: "latest", Type: fuse.DT_Dir}
-		out = append(out, dirent)
-		d.Children["latest"] = NewDir(d.fs, HostLatest, "latest", d.Ctx, d.Ref, "", os.ModeDir)
+		out = append(out, fuse.Dirent{Name: "latest", Type: fuse.DT_Dir})
+		d.Children["latest"] = NewDir(d.fs, HostLatest, "latest", d.Ctx, d.Ref, "", os.ModeDir, "")
+		out = append(out, fuse.Dirent{Name: "snapshots", Type: fuse.DT_Dir})
+		d.Children["snapshots"] = NewDir(d.fs, HostSnapshots, "snapshots", d.Ctx, d.Ref, "", os.ModeDir, "")
 		return out, err
 	case HostLatest:
 		log.Printf("HostLatest")
@@ -221,6 +235,7 @@ func (d *Dir) ReadDir(intr fs.Intr) (out []fuse.Dirent, err fuse.Error) {
 		if herr != nil {
 			panic(herr)
 		}
+		// TODO make snapshot.HostLatest return a []*clientutil.Meta ?
 		for _, data := range snapshots["snapshots"].([]interface{}) {
 			meta := data.(map[string]interface{})
 			//metaHash := meta["hash"].(string)
@@ -235,10 +250,44 @@ func (d *Dir) ReadDir(intr fs.Intr) (out []fuse.Dirent, err fuse.Error) {
 				out = append(out, dirent)
 			} else {
 				dirent := fuse.Dirent{Name: metaName, Type: fuse.DT_Dir}
-				d.Children[metaName] = NewDir(d.fs, BasicDir, metaName, d.Ctx, metaRef, metaMtime, os.FileMode(metaMode))
+				d.Children[metaName] = NewDir(d.fs, BasicDir, metaName, d.Ctx, metaRef, metaMtime, os.FileMode(metaMode), "")
 				out = append(out, dirent)
 			}
 		}
+		return out, err
+	case HostSnapshots:
+		snapshots, herr := snapshot.HostSnapSet(d.Ref)
+		if herr != nil {
+			panic(err)
+		}
+		for _, data := range snapshots["snapshots"].([]interface{}) {
+			snap := data.(map[string]interface{})
+			snapName := filepath.Base(snap["path"].(string))
+			snapHash := snap["hash"].(string)
+			dirent := fuse.Dirent{Name: snapName, Type: fuse.DT_Dir}
+			d.Children[snapName] = NewDir(d.fs, SnapshotsDir, snapName, d.Ctx, snapHash, "", os.ModeDir, "")
+			out = append(out, dirent)
+		}
+		return out, err
+	case SnapshotsDir:
+		snapshots, herr := snapshot.Snapshots(d.Ref)
+		if herr != nil {
+			panic(err)
+		}
+		for _, data := range snapshots["snapshots"].([]interface{}) {
+			iv := data.(map[string]interface{})
+			stime := time.Unix(int64(iv["index"].(float64)), 0)
+			sname := stime.Format(time.RFC3339)
+			dirent := fuse.Dirent{Name: sname, Type: fuse.DT_Dir}
+			d.Children[sname] = NewDir(d.fs, SnapshotDir, sname, d.Ctx, iv["value"].(string), "", os.ModeDir, d.Name)
+			out = append(out, dirent)
+		}
+		return out, err
+	case SnapshotDir:
+		// TODO snapset hash => to meta
+		//dirent := fuse.Dirent{Name: d.Extra, Type: fuse.DT_Dir}
+		//d.Children[d.Extra] = NewDir(d.fs, BasicDir, d.Extra, d.Ctx, d.Ref, "", os.ModeDir, "")
+		//out = append(out, dirent)
 		return out, err
 	}
 	return d.readDir()
