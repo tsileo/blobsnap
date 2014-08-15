@@ -73,7 +73,11 @@ func main() {
 				}
 				//cl.SetIgnoredFiles(ignoredFiles)
 				defer up.Close()
-				fmt.Printf("%v", up.Put(c.Args().First()))
+				meta, err := up.Put(c.Args().First())
+				if err != nil {
+					fmt.Printf("snapshot failed: %v", err)
+				}
+				fmt.Printf("%v", meta.Hash)
 				//b, m, wr, err := cl.Put(&client.Ctx{Namespace: cl.Hostname, Archive: c.Bool("archive")}, c.Args().First())
 				//fmt.Printf("b:%+v,m:%+v,wr:%+v,err:%v\n", b, m, wr, err)
 			},
