@@ -177,7 +177,9 @@ func (d *Dir) readDir() (out []fuse.Dirent, ferr fuse.Error) {
 	defer con.Close()
 	metaHashes, err := d.fs.Client.Smembers(con, d.Ref)
 	if err != nil {
-		panic(err)
+		if cnt, err := d.fs.Client.Scard(con, d.Ref); cnt != 0 || err != nil {
+			panic(err)
+		}
 	}
 	for _, hash := range metaHashes {
 		meta := clientutil.NewMeta()

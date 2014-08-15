@@ -32,10 +32,10 @@ func (up *Uploader) Close() error {
 	return up.Client.Close()
 }
 
-func (up *Uploader) Put(path string) (error) {
+func (up *Uploader) Put(path string) (*clientutil.Meta, error) {
 	info, err := os.Stat(path)
 	if os.IsNotExist(err) {
-		return err
+		return nil, err
 	}
 	var meta *clientutil.Meta
 	tx := client.NewTransaction()
@@ -47,7 +47,7 @@ func (up *Uploader) Put(path string) (error) {
 		meta, _, err = up.Uploader.PutFile(up.Ctx, tx, path)
 	}
 	if err != nil {
-		return err
+		return meta, err
 	}
 	setKey := SetKey(path, up.Client.Hostname)
 	snapSet := &SnapSet{
@@ -61,7 +61,7 @@ func (up *Uploader) Put(path string) (error) {
 	tx.Sadd(fmt.Sprintf("blobsnap:host:%v", up.Client.Hostname), setKey)
 	tx.Ladd(fmt.Sprintf("blobsnap:snapset:%v:history", setKey), int(time.Now().UTC().Unix()), meta.Hash)
 	if up.Client.Commit(up.Ctx, tx); err != nil {
-		return err
+		return meta, err
 	}
-	return nil
+	return meta, nil
 }

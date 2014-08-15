@@ -7,9 +7,12 @@ import (
 	"io/ioutil"
 	"path/filepath"
 	"log"
+	"time"
 
 	"github.com/tsileo/blobstash/test"
 	"github.com/tsileo/blobstash/client"
+
+	"github.com/tsileo/blobsnap/snapshot"
 )
 
 func check(e error) {
@@ -28,26 +31,32 @@ func TestFS(t *testing.T) {
 	}
 	defer s.Shutdown()
 	log.Println("Server setup done")
-	c, err := client.NewTestClient("")
-	defer c.Close()
-	defer c.RemoveCache()
-	check(err)
-
 	// Setup FS
 	tempDir, err := ioutil.TempDir("", "blobtools-blobfs-test-")
 	check(err)
 	defer os.RemoveAll(tempDir)
 	stop := make(chan bool, 1)
 	stopped := make(chan bool, 1)
-	go Mount(tempDir, stop, stopped)
+	cl, err := client.New("")
+	defer cl.Close()
+	check(err)
+	go Mount(cl, tempDir, stop, stopped)
 	// DO TEST HERE
 	// random tree with client +
 	// test.Diff
 
 	tdir := test.NewRandomTree(t, ".", 1)
 	defer os.RemoveAll(tdir)
-	_, meta, _, err := c.Put(&client.Ctx{Hostname: c.Hostname}, tdir)
+
+	up, _ := snapshot.NewUploader("")
+	defer up.Close()
+	meta, err := up.Put(tdir)
 	check(err)
+
+	t.Logf("Upload done")
+
+	// Wait for the meta blob to be appplied
+	time.Sleep(2*time.Second)
 
 	hostname, err := os.Hostname()
 	check(err)
@@ -55,6 +64,7 @@ func TestFS(t *testing.T) {
 	t.Logf("Testing latest directory")
 
 	out, _ := exec.Command("ls", "-lR", tempDir).CombinedOutput()
+	t.Logf("$ ls -lR\n%v\n", out)
 
 	restoredPath := filepath.Join(tempDir, hostname, "latest", meta.Name)
 	if err := test.Diff(tdir, restoredPath); err != nil {
