@@ -14,9 +14,9 @@ import (
 
 	"github.com/tsileo/blobsnap/snapshot"
 	"github.com/tsileo/blobsnap/fs"
+	"github.com/tsileo/blobsnap/scheduler"
 
 	"github.com/tsileo/blobstash/client"
-//	"github.com/tsileo/blobstash/scheduler"
 	"github.com/tsileo/blobstash/config/pathutil"
 )
 
@@ -64,7 +64,7 @@ func main() {
 		{
 			Name:      "put",
 			Usage:     "put a file/directory",
-			Flags:     append(commonFlags, cli.BoolFlag{"archive", "upload the file/directory as an archive"}),
+			Flags:     commonFlags,
 			Action: func(c *cli.Context) {
 				up, _ := snapshot.NewUploader(defaultHost)
 				if c.String("host") != "" {
@@ -78,28 +78,6 @@ func main() {
 				//fmt.Printf("b:%+v,m:%+v,wr:%+v,err:%v\n", b, m, wr, err)
 			},
 		},
-		//{
-		//	Name:      "ls",
-		//	Usage:     "List backups",
-		//	Action: func(c *cli.Context) {
-		//		client, _ := client.NewClient("", ignoredFiles)
-		//		metas, _ := client.List()
-		//		for _, m := range metas {
-		//			fmt.Printf("%+v\n", m)
-		//		}
-		//	},
-		//},
-		//{
-		//	Name:      "restore",
-		//	Usage:     "Restore a snapshot",
-		//	Action: func(c *cli.Context) {
-		//		cl, _ := client.NewClient("", defaultHost, ignoredFiles)
-		//		defer cl.Close()
-		//		args := c.Args()
-		//		snap, meta, rr, err := cl.Get(args[0], args[1])
-		//		fmt.Printf("snap:%+v,meta:%+v,rr:%+v/err:%v", snap, meta, rr, err)
-		//	},
-		//},
 		{
 			Name:  "mount",
 			Usage: "Mount the read-only filesystem to the given path",
@@ -110,18 +88,23 @@ func main() {
 				fs.Mount(cl, c.Args().First(), stop, stopped)
 			},
 		},
-		//{
-		//	Name:      "scheduler",
-		//	ShortName: "sched",
-		//	Usage:     "Start the backup scheduler",
-		//	Flags:     commonFlags,
-		//	Action: func(c *cli.Context) {
-		//		cl, _ := client.NewClient(c.String("host"), defaultHost, ignoredFiles)
-		//		defer cl.Close()
-		//		d := scheduler.New(cl)
-		//		d.Run()
-		//	},
-		//},
+		{
+			Name:      "scheduler",
+			ShortName: "sched",
+			Usage:     "Start the backup scheduler",
+			Flags:     commonFlags,
+			Action: func(c *cli.Context) {
+				up, _ := snapshot.NewUploader(defaultHost)
+				if c.String("host") != "" {
+					// Override the hostname if needed
+					up.Client.Hostname = c.String("host")
+				}
+				//cl.SetIgnoredFiles(ignoredFiles)
+				defer up.Close()
+				d := scheduler.New(up)
+				d.Run()
+			},
+		},
 	}
 	app.Run(os.Args)
 }

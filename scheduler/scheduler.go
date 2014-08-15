@@ -23,9 +23,6 @@ package scheduler
 
 import (
 	"fmt"
-	"github.com/cznic/kv"
-	"github.com/robfig/cron"
-	dclient "github.com/tsileo/blobstash/client"
 	"log"
 	"os"
 	"os/signal"
@@ -33,6 +30,11 @@ import (
 	"sync"
 	"syscall"
 	"time"
+
+	"github.com/cznic/kv"
+	"github.com/robfig/cron"
+
+	"github.com/tsileo/blobsnap/snapshot"
 )
 
 type Job struct {
@@ -45,7 +47,10 @@ type Job struct {
 
 // NewJob initialize a Job
 func NewJob(conf *ConfigEntry, sched cron.Schedule) *Job {
-	return &Job{config: conf, sched: sched}
+	return &Job{
+		config: conf,
+		sched: sched,
+	}
 }
 
 // ComputeNext determine the next scheduled time for running the Job.
@@ -148,7 +153,7 @@ func NewDB(path string) (*kv.DB, error) {
 }
 
 type Scheduler struct {
-	client  *dclient.Client
+	uploader  *snapshot.Uploader
 	stop    chan struct{}
 	running bool
 	jobs    []*Job
@@ -173,13 +178,17 @@ func (s byTime) Less(i, j int) bool {
 	return s[i].Next.Before(s[j].Next)
 }
 
-func New(client *dclient.Client) *Scheduler {
+func New(uploader *snapshot.Uploader) *Scheduler {
 	db, err := NewDB("scheduler-db")
 	if err != nil {
 		panic(err)
 	}
-	return &Scheduler{client: client, stop: make(chan struct{}),
-		jobs: []*Job{}, db: db}
+	return &Scheduler{
+		uploader: uploader,
+		stop: make(chan struct{}),
+		jobs: []*Job{},
+		db: db,
+	}
 }
 
 // Stop shutdown the Scheduler cleanly.
