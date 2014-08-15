@@ -64,8 +64,6 @@ func TestFS(t *testing.T) {
 	t.Logf("Testing latest directory")
 
 	out, _ := exec.Command("ls", "-lR", tempDir).CombinedOutput()
-	t.Logf("$ ls -lR\n%v\n", out)
-
 	restoredPath := filepath.Join(tempDir, hostname, "latest", meta.Name)
 	if err := test.Diff(tdir, restoredPath); err != nil {
 		t.Logf("ls result: \n%v", string(out))

@@ -39,14 +39,16 @@ return {snapshots = snapshots}
 `
 func Snapshots(hash string) (map[string]interface{}, error) {
 	res := map[string]interface{}{}
-	if err := script.RunScript("", SnapshotsScript, "{\"snapset\":\""+hash+"\"}", &res); err != nil {
+	args := map[string]interface{}{"snapset": hash}
+	if err := script.RunScript("", SnapshotsScript, &args, &res); err != nil {
 		return res, fmt.Errorf("failed to run script: %v", err)
 	}
 	return res, nil
 }
 func HostSnapSet(host string) (map[string]interface{}, error) {
 	res := map[string]interface{}{}
-	if err := script.RunScript("", HostSnapSetScript, "{\"host\":\""+host+"\"}", &res); err != nil {
+	args := map[string]interface{}{"host": host}
+	if err := script.RunScript("", HostSnapSetScript, &args, &res); err != nil {
 		return res, fmt.Errorf("failed to run script: %v", err)
 	}
 	return res, nil
@@ -54,7 +56,8 @@ func HostSnapSet(host string) (map[string]interface{}, error) {
 
 func HostLatest(host string) (map[string]interface{}, error) {
 	res := map[string]interface{}{}
-	if err := script.RunScript("", HostLatestScript, "{\"host\":\""+host+"\"}", &res); err != nil {
+	args := map[string]interface{}{"host": host}
+	if err := script.RunScript("", HostLatestScript, &args, &res); err != nil {
 		return res, fmt.Errorf("failed to run script: %v", err)
 	}
 	return res, nil
