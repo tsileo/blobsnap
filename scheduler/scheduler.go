@@ -38,6 +38,7 @@ import (
 )
 
 type Job struct {
+	uploader *snapshot.Uploader
 	schedulerConfig *Config
 	config       *ConfigEntry
 	sched        cron.Schedule
@@ -94,6 +95,11 @@ func (j *Job) Key() string {
 
 func (j *Job) Run() error {
 	log.Printf("Running job %+v", j)
+	meta, err := j.uploader.Put(j.config.Path)
+	if err != nil {
+		log.Printf("Failed to perform snapshot %v: err", j, err)
+	}
+	log.Printf("Snapshot done, meta: %v", meta.Hash)
 	return nil
 }
 
@@ -264,6 +270,7 @@ func (d *Scheduler) updateJobs() error {
 			return err
 		}
 		job := NewJob(&snap, spec)
+		job.uploader = d.uploader
 		res, err := d.db.Get(nil, []byte(job.Key()))
 		if res == nil {
 			prev := time.Now().UTC()

@@ -54,7 +54,31 @@ $ blobsnap put /path/to/dir/or/file
 
 ### Backup scheduler
 
-The backup scheduler allows you to perform snapshots...
+The backup scheduler allows you to perform snapshots on a given basis.
+
+The spec expect a cron-like spec, or a custom spec supported by [http://godoc.org/github.com/robfig/cron](http://godoc.org/github.com/robfig/cron).
+
+The scheduler support a special [anacron-like](http://anacron.sourceforge.net/) mode, designed for laptop users.
+
+```json
+{
+    "anacron_mode": false,
+    "snapshots": [
+        {
+            "path": "/path/to/backup",
+            "spec": "0 30 * * * *"
+        },
+        {
+            "path": "/path/to/another/backup",
+            "spec": "@every 12h"
+        }
+    ]
+}
+```
+
+```console
+$ blobsnap sched
+```
 
 ## Roadmap / Ideas
 
