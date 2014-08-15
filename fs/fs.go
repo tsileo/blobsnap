@@ -284,10 +284,21 @@ func (d *Dir) ReadDir(intr fs.Intr) (out []fuse.Dirent, err fuse.Error) {
 		}
 		return out, err
 	case SnapshotDir:
-		// TODO snapset hash => to meta
-		//dirent := fuse.Dirent{Name: d.Extra, Type: fuse.DT_Dir}
-		//d.Children[d.Extra] = NewDir(d.fs, BasicDir, d.Extra, d.Ctx, d.Ref, "", os.ModeDir, "")
-		//out = append(out, dirent)
+		con := d.fs.Client.ConnWithCtx(d.Ctx)
+		defer con.Close()
+		meta := clientutil.NewMeta()
+		if err := d.fs.Client.HscanStruct(con, d.Ref, meta); err != nil {
+			panic(err)
+		}
+		var dirent fuse.Dirent
+		if meta.Type == "file" {
+			dirent = fuse.Dirent{Name: meta.Name, Type: fuse.DT_File}
+			d.Children[meta.Name] = NewFile(d.fs, meta.Name, d.Ctx, meta.Ref, meta.Size, meta.ModTime, os.FileMode(meta.Mode))
+		} else {
+			dirent = fuse.Dirent{Name: meta.Name, Type: fuse.DT_Dir}
+			d.Children[meta.Name] = NewDir(d.fs, BasicDir, meta.Name, d.Ctx, meta.Ref, meta.ModTime, os.FileMode(meta.Mode), "")
+		}
+		out = append(out, dirent)
 		return out, err
 	}
 	return d.readDir()

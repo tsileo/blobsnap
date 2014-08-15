@@ -27,9 +27,8 @@ local snapshots, _ = blobstash.DB.Smembers("blobsnap:host:" .. blobstash.Args.ho
 local res = {}
 for i = 1, #snapshots do
     local last, _ = blobstash.DB.Llast("blobsnap:snapset:" .. snapshots[i] .. ":history")
-    local snap, _ = blobstash.DB.GetHash("blobsnap:snapshot:" .. last)
-    local meta, _ = blobstash.DB.GetHash(snap.meta_ref)
-    meta.hash = snap.meta_ref
+    local meta, _ = blobstash.DB.GetHash(last)
+    meta.hash = last
     table.insert(res, meta)
 end
 return {snapshots = res}`

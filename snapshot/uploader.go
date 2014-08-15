@@ -3,6 +3,7 @@ package snapshot
 import (
 	"os"
 	"fmt"
+	"time"
 
 	"github.com/tsileo/blobstash/client"
 	"github.com/tsileo/blobstash/client/ctx"
@@ -37,28 +38,28 @@ func (up *Uploader) Put(path string) (error) {
 		return err
 	}
 	var meta *clientutil.Meta
+	tx := client.NewTransaction()
 	//var wr *clientutil.WriteResult
 	if info.IsDir() {
 		meta, _, err = up.Uploader.PutDir(up.Ctx, path)
 	} else {
-		meta, _, err = up.Uploader.PutFile(up.Ctx, nil, path)
+		// If we upload a single, bundle the meta in a single Transaction
+		meta, _, err = up.Uploader.PutFile(up.Ctx, tx, path)
 	}
 	if err != nil {
 		return err
 	}
-	tx := client.NewTransaction()
-	snap := NewSnapshot(path, up.Client.Hostname, meta.Hash)
-	snap.ComputeHash()
+	setKey := SetKey(path, up.Client.Hostname)
 	snapSet := &SnapSet{
 		Path: path,
 		Hostname: up.Client.Hostname,
-		Hash: snap.SetKey(),
+		Hash: setKey,
 	}
-	tx.Hmset(fmt.Sprintf("blobsnap:snapshot:%v", snap.Hash), client.FormatStruct(snap)...)
-	tx.Hmset(fmt.Sprintf("blobsnap:snapset:%v", snap.SetKey()), client.FormatStruct(snapSet)...)
+	//tx.Hmset(fmt.Sprintf("blobsnap:snapshot:%v", snap.Hash), client.FormatStruct(snap)...)
+	tx.Hmset(fmt.Sprintf("blobsnap:snapset:%v", setKey), client.FormatStruct(snapSet)...)
 	tx.Sadd("blobsnap:hostnames", up.Client.Hostname)
-	tx.Sadd(fmt.Sprintf("blobsnap:host:%v", up.Client.Hostname), snap.SetKey())
-	tx.Ladd(fmt.Sprintf("blobsnap:snapset:%v:history", snap.SetKey()), int(snap.Time), snap.Hash)
+	tx.Sadd(fmt.Sprintf("blobsnap:host:%v", up.Client.Hostname), setKey)
+	tx.Ladd(fmt.Sprintf("blobsnap:snapset:%v:history", setKey), int(time.Now().UTC().Unix()), meta.Hash)
 	if up.Client.Commit(up.Ctx, tx); err != nil {
 		return err
 	}
