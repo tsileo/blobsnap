@@ -6,10 +6,10 @@ BlobSnap is a snapshot-based backup system built on top of [BlobStash](https://g
 ## Features
 
 - Content addressed (with [BLAKE2b](https://blake2.net) as hashing algorithm), files are split into blobs, and retrieved by hash, blobs are deduplicated (incremental backups by default).
-- Read-only FUSE file system to navigate backups/snapshots
-- Take snapshot automatically every x minutes, using a separate client-side scheduler (provides Arq/time machine like backup) **not finished yet**
-- Possibility to incrementally archive blobs to AWS Glacier (see BlobStash docs)
-- Support for backing-up multiple hosts (you can force a different host to split backups into "different buckets")
+- Read-only FUSE file system to navigate backups/snapshots.
+- Take snapshot automatically every x minutes, using a separate client-side scheduler (provides Arq/time machine like backup).
+- Possibility to incrementally archive blobs to AWS Glacier (see BlobStash docs).
+- Support for backing-up multiple hosts (you can force a different host to split backups into "different buckets").
 
 Draws inspiration from [Camlistore](camlistore.org) and [bup](https://github.com/bup/bup) (files are split into multiple blobs using a rolling checksum).
 

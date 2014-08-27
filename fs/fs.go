@@ -13,14 +13,14 @@ the file/dir (e.g /datadb/mnt/snapshots/writing/2014-05-04T17:42:48+02:00/writin
 package fs
 
 import (
+	"fmt"
 	"io"
 	"log"
-	"path/filepath"
 	"os"
 	"os/signal"
-	"time"
-	_ "fmt"
+	"path/filepath"
 	"strconv"
+	"time"
 
 	"bazil.org/fuse"
 	"bazil.org/fuse/fs"
@@ -93,7 +93,7 @@ func Mount(client *client.Client, mountpoint string, stop <-chan bool, stopped c
 		if err != nil {
 			log.Printf("Error unmounting: %v", err)
 		} else {
-			stopped <-true
+			stopped <- true
 		}
 	}()
 
@@ -129,19 +129,30 @@ func NewRootDir(fs *FS) (d *Dir) {
 	d = NewDir(fs, Root, "root", &ctx.Ctx{}, "", "", os.ModeDir, "")
 	return d
 }
+
 type Node struct {
-	Name string
-	Mode os.FileMode
-	Ref  string
-	Size uint64
+	Name    string
+	Mode    os.FileMode
+	Ref     string
+	Size    uint64
 	ModTime string
-	Extra string
-	fs   *FS
+	Extra   string
+	fs      *FS
 }
 
 func (n *Node) Attr() fuse.Attr {
-	t, _ := time.Parse(time.RFC3339, n.ModTime)
-	return fuse.Attr{Mode: n.Mode, Size: n.Size, Mtime: t}
+	attr := fuse.Attr{
+		Mode: n.Mode,
+		Size: n.Size,
+	}
+	if n.ModTime != "" {
+		t, err := time.Parse(time.RFC3339, n.ModTime)
+		if err != nil {
+			panic(fmt.Errorf("error parsing mtime for %v: %v", n, err))
+		}
+		attr.Mtime = t
+	}
+	return attr
 }
 
 func (n *Node) Setattr(req *fuse.SetattrRequest, resp *fuse.SetattrResponse, intr fs.Intr) fuse.Error {
@@ -151,12 +162,15 @@ func (n *Node) Setattr(req *fuse.SetattrRequest, resp *fuse.SetattrResponse, int
 
 type Dir struct {
 	Node
-	Type DirType
-	Children       map[string]fs.Node
-	Ctx            *ctx.Ctx
+	Type     DirType
+	Children map[string]fs.Node
+	Ctx      *ctx.Ctx
 }
 
 func NewDir(cfs *FS, dtype DirType, name string, cctx *ctx.Ctx, ref string, modTime string, mode os.FileMode, extra string) (d *Dir) {
+	if cctx == nil {
+		panic(fmt.Errorf("no ctx provided for dir %v/%v", name, ref))
+	}
 	d = &Dir{}
 	d.Type = dtype
 	d.Ctx = cctx
@@ -184,7 +198,7 @@ func (d *Dir) readDir() (out []fuse.Dirent, ferr fuse.Error) {
 	for _, hash := range metaHashes {
 		meta := clientutil.NewMeta()
 		if err := d.fs.Client.HscanStruct(con, hash, meta); err != nil {
-			panic(err)
+			panic(fmt.Errorf("failed to fetch meta %v: %v", hash, err))
 		}
 		var dirent fuse.Dirent
 		if meta.Type == "file" {
@@ -200,6 +214,10 @@ func (d *Dir) readDir() (out []fuse.Dirent, ferr fuse.Error) {
 }
 
 func (d *Dir) Lookup(name string, intr fs.Intr) (fs fs.Node, err fuse.Error) {
+	log.Printf("OP Lookup %v", name)
+	if len(d.Children) == 0 {
+		d.loadDir()
+	}
 	var ok bool
 	fs, ok = d.Children[name]
 	if ok {
@@ -209,8 +227,13 @@ func (d *Dir) Lookup(name string, intr fs.Intr) (fs fs.Node, err fuse.Error) {
 }
 
 func (d *Dir) ReadDir(intr fs.Intr) (out []fuse.Dirent, err fuse.Error) {
-	log.Printf("ReadDir %v", d)
-	switch d.Type{
+	log.Printf("OP ReadDir %v", d)
+	return d.loadDir()
+}
+
+func (d *Dir) loadDir() (out []fuse.Dirent, err fuse.Error) {
+	log.Printf("OP loadDir %v", d)
+	switch d.Type {
 	case Root:
 		d.Children = make(map[string]fs.Node)
 		con := d.fs.Client.ConnWithCtx(d.Ctx)
@@ -308,7 +331,7 @@ func (d *Dir) ReadDir(intr fs.Intr) (out []fuse.Dirent, err fuse.Error) {
 
 type File struct {
 	Node
-	Ctx *ctx.Ctx
+	Ctx      *ctx.Ctx
 	FakeFile *clientutil.FakeFile
 }
 
