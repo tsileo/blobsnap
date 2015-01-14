@@ -2,19 +2,19 @@ package main
 
 import (
 	"fmt"
-	"os"
-	"runtime"
-	"path/filepath"
 	"io/ioutil"
+	"log"
+	"os"
+	"path/filepath"
+	"runtime"
 
 	"github.com/codegangsta/cli"
 
 	"github.com/bitly/go-simplejson"
 
-
-	"github.com/tsileo/blobsnap/snapshot"
 	"github.com/tsileo/blobsnap/fs"
 	"github.com/tsileo/blobsnap/scheduler"
+	"github.com/tsileo/blobsnap/snapshot"
 
 	"github.com/tsileo/blobstash/client"
 	"github.com/tsileo/blobstash/config/pathutil"
@@ -33,6 +33,7 @@ func loadConf(config_path string) *simplejson.Json {
 	if config_path == "" {
 		config_path = filepath.Join(pathutil.ConfigDir(), "client-config.json")
 	}
+	log.Printf("c:%v", config_path)
 	dat, err := ioutil.ReadFile(config_path)
 	if err != nil {
 		panic(fmt.Errorf("failed to read config file: %v", err))
@@ -47,11 +48,10 @@ func loadConf(config_path string) *simplejson.Json {
 func main() {
 	app := cli.NewApp()
 	commonFlags := []cli.Flag{
-  		cli.StringFlag{"host", "", "override the real hostname"},
+		cli.StringFlag{"host", "", "override the real hostname"},
+		cli.StringFlag{"config", "", "config file"},
 	}
 
-	conf := loadConf("")
-	defaultHost := conf.Get("server").MustString("localhost:9735")
 	//ignoredFiles, _ := conf.Get("ignored-files").StringArray()
 
 	app.Name = "blobsnap"
@@ -62,10 +62,11 @@ func main() {
 	//  }
 	app.Commands = []cli.Command{
 		{
-			Name:      "put",
-			Usage:     "put a file/directory",
-			Flags:     commonFlags,
+			Name:  "put",
+			Usage: "put a file/directory",
+			Flags: commonFlags,
 			Action: func(c *cli.Context) {
+				defaultHost := loadConf(c.String("config")).Get("server").MustString("localhost:9735")
 				up, _ := snapshot.NewUploader(defaultHost)
 				if c.String("host") != "" {
 					// Override the hostname if needed
@@ -86,6 +87,7 @@ func main() {
 			Name:  "mount",
 			Usage: "Mount the read-only filesystem to the given path",
 			Action: func(c *cli.Context) {
+				defaultHost := loadConf(c.String("config")).Get("server").MustString("localhost:9735")
 				cl, _ := client.New(defaultHost)
 				stop := make(chan bool, 1)
 				stopped := make(chan bool, 1)
@@ -98,6 +100,7 @@ func main() {
 			Usage:     "Start the backup scheduler",
 			Flags:     commonFlags,
 			Action: func(c *cli.Context) {
+				defaultHost := loadConf(c.String("config")).Get("server").MustString("localhost:9735")
 				up, _ := snapshot.NewUploader(defaultHost)
 				if c.String("host") != "" {
 					// Override the hostname if needed

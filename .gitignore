@@ -1,3 +1,4 @@
+cmd/blobsnap
 *.json
 .*
 *-db
