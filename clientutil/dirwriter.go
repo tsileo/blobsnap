@@ -10,10 +10,6 @@ import (
 	"time"
 
 	"github.com/dchest/blake2b"
-
-	"github.com/tsileo/blobstash/client"
-	"github.com/tsileo/blobstash/client/transaction"
-	"github.com/tsileo/blobstash/client/ctx"
 )
 
 // node represents either a file or directory in the directory tree
@@ -30,8 +26,6 @@ type node struct {
 	// Children (if the node is a directory)
 	children []*node
 	parent   *node
-
-	tx *transaction.Transaction
 
 	// Upload result is stored in the node
 	wr   *WriteResult
@@ -72,7 +66,6 @@ func (up *Uploader) DirExplorer(path string, pnode *node, nodes chan<- *node) {
 		n := &node{path: abspath, fi: fi, parent: pnode}
 		n.cond.L = &n.mu
 		if fi.IsDir() {
-			n.tx = client.NewTransaction()
 			up.DirExplorer(abspath, n, nodes)
 			nodes <- n
 			pnode.children = append(pnode.children, n)
@@ -93,7 +86,7 @@ func (up *Uploader) DirExplorer(path string, pnode *node, nodes chan<- *node) {
 }
 
 // DirWriter reads the directory and upload it.
-func (up *Uploader) DirWriterNode(cctx *ctx.Ctx, node *node) {
+func (up *Uploader) DirWriterNode(node *node) {
 	node.mu.Lock()
 	defer node.mu.Unlock()
 	//log.Printf("DirWriterNode %v star", node)
@@ -124,58 +117,44 @@ func (up *Uploader) DirWriterNode(cctx *ctx.Ctx, node *node) {
 	defer up.DirUploadDone()
 
 	sort.Strings(hashes)
+	mc := NewMetaContent()
 	for _, hash := range hashes {
 		h.Write([]byte(hash))
+		mc.AddHash(hash)
 	}
 	node.wr.Hash = fmt.Sprintf("%x", h.Sum(nil))
-
-	con := up.client.ConnWithCtx(cctx)
-	defer con.Close()
-
-	cnt, err := up.client.Scard(con, node.wr.Hash)
-	if err != nil {
+	mhash, mjs := mc.Json()
+	//cnt, err := up.client.Scard(con, node.wr.Hash)
+	if err := up.bs.Put(mhash, mjs); err != nil {
 		node.err = err
 		return
 	}
-	if cnt == 0 {
-		if len(hashes) > 0 {
-			node.tx.Sadd(node.wr.Hash, hashes...)
-			node.wr.DirsUploaded++
-			node.wr.DirsCount++
-		}
-	} else {
-		node.wr.AlreadyExists = true
-		node.wr.DirsSkipped++
-		node.wr.DirsCount++
-	}
-
+	// TODO store the mhash for directory content
+	node.wr.DirsUploaded++
+	node.wr.DirsCount++
+	// TODO WriteResult exisiting handling
 	node.meta = NewMeta()
 	node.meta.Name = filepath.Base(node.path)
 	node.meta.Type = "dir"
+	node.meta.Ref = mhash
 	node.meta.Size = node.wr.Size
-	node.meta.Ref = node.wr.Hash
 	node.meta.Mode = uint32(node.fi.Mode())
 	node.meta.ModTime = node.fi.ModTime().Format(time.RFC3339)
-	node.meta.ComputeHash()
-	hlen, err := up.client.Hlen(con, node.meta.Hash)
-	if err != nil {
+	mhash, mjs = node.meta.Json()
+	node.meta.Hash = mhash
+	if err := up.bs.Put(mhash, mjs); err != nil {
 		node.err = err
 		return
 	}
-	if hlen == 0 {
-		node.tx.Hmset(node.meta.Hash, client.FormatStruct(node.meta)...)
-	}
-	//if node.rb.ShouldFlush() || node.root {
-	//	log.Println("Flushing ReqBuffer now")
-	if node.tx.Len() > 3 || node.root {
-		if err := up.client.Commit(cctx, node.tx); err != nil {
-			node.err = err
-			return
-		}
-	} else {
-		//log.Println("Merging ReqBuffer with parent %v", node.parent)
-		node.parent.tx.Merge(node.tx)
-	}
+	//node.meta.ComputeHash()
+	//hlen, err := up.client.Hlen(con, node.meta.Hash)
+	//if err != nil {
+	//	node.err = err
+	//	return
+	//}
+	//if hlen == 0 {
+	//	node.tx.Hmset(node.meta.Hash, client.FormatStruct(node.meta)...)
+	//}
 	node.done = true
 	node.cond.Broadcast()
 	return
@@ -183,7 +162,7 @@ func (up *Uploader) DirWriterNode(cctx *ctx.Ctx, node *node) {
 
 // PutDir upload a directory, it returns the saved Meta,
 // a WriteResult containing infos about uploaded blobs.
-func (up *Uploader) PutDir(cctx *ctx.Ctx, path string) (*Meta, *WriteResult, error) {
+func (up *Uploader) PutDir(path string) (*Meta, *WriteResult, error) {
 	//log.Printf("PutDir %v\n", path)
 	abspath, err := filepath.Abs(path)
 	if err != nil {
@@ -191,7 +170,7 @@ func (up *Uploader) PutDir(cctx *ctx.Ctx, path string) (*Meta, *WriteResult, err
 	}
 	nodes := make(chan *node)
 	fi, _ := os.Stat(abspath)
-	n := &node{root: true, path: abspath, fi: fi, tx: client.NewTransaction()}
+	n := &node{root: true, path: abspath, fi: fi}
 	n.cond.L = &n.mu
 
 	var wg sync.WaitGroup
@@ -217,14 +196,14 @@ func (up *Uploader) PutDir(cctx *ctx.Ctx, path string) (*Meta, *WriteResult, err
 				}()
 				defer wg.Done()
 				if node.fi.IsDir() {
-					up.DirWriterNode(cctx, node)
+					up.DirWriterNode(node)
 					if node.err != nil {
 						n.err = fmt.Errorf("error DirWriterNode with node %v", node)
 					}
 				} else {
 					node.mu.Lock()
 					defer node.mu.Unlock()
-					node.meta, node.wr, node.err = up.PutFile(cctx, node.parent.tx, node.path)
+					node.meta, node.wr, node.err = up.PutFile(node.path)
 					if node.err != nil {
 						n.err = fmt.Errorf("error PutFile with node %v", node)
 					}
@@ -236,6 +215,6 @@ func (up *Uploader) PutDir(cctx *ctx.Ctx, path string) (*Meta, *WriteResult, err
 	}()
 	wg.Wait()
 	// Upload the root directory
-	up.DirWriterNode(cctx, n)
+	up.DirWriterNode(n)
 	return n.meta, n.wr, n.err
 }

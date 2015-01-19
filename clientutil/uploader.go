@@ -1,8 +1,6 @@
 package clientutil
 
-import (
-	"github.com/tsileo/blobstash/client"
-)
+import "github.com/tsileo/blobstash/client2"
 
 var (
 	uploader    = 25 // concurrent upload uploaders
@@ -10,15 +8,17 @@ var (
 )
 
 type Uploader struct {
-	client *client.Client
+	bs  *client2.BlobStore
+	kvs *client2.KvStore
 
 	uploader    chan struct{}
 	dirUploader chan struct{}
 }
 
-func NewUploader(cl *client.Client) *Uploader {
+func NewUploader(bs *client2.BlobStore, kvs *client2.KvStore) *Uploader {
 	return &Uploader{
-		client:      cl,
+		bs:          bs,
+		kvs:         kvs,
 		uploader:    make(chan struct{}, uploader),
 		dirUploader: make(chan struct{}, dirUploader),
 	}

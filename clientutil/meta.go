@@ -1,25 +1,53 @@
 package clientutil
 
 import (
+	"encoding/json"
 	"fmt"
-	"strconv"
 	"sync"
 
 	"github.com/dchest/blake2b"
+	"github.com/tsileo/blobstash/client2"
 )
+
+type MetaContent struct {
+	Mapping []interface{} `json:"m"`
+}
+
+func NewMetaContent() *MetaContent {
+	return &MetaContent{
+		Mapping: []interface{}{},
+	}
+}
+
+func (mc *MetaContent) Add(index int, hash string) {
+	mc.Mapping = append(mc.Mapping, []interface{}{index, hash})
+}
+
+func (mc *MetaContent) AddHash(hash string) {
+	mc.Mapping = append(mc.Mapping, hash)
+}
+
+func (mc *MetaContent) Json() (string, []byte) {
+	js, err := json.Marshal(mc)
+	if err != nil {
+		panic(err)
+	}
+	h := fmt.Sprintf("%x", blake2b.Sum256(js))
+	return h, js
+}
 
 var metaPool = sync.Pool{
 	New: func() interface{} { return &Meta{} },
 }
 
 type Meta struct {
-	Name    string `redis:"name"`
-	Type    string `redis:"type"`
-	Size    int    `redis:"size"`
-	Mode    uint32 `redis:"mode"`
-	ModTime string `redis:"mtime"`
-	Ref     string `redis:"ref"`
-	Hash    string `redis:"-"`
+	Name    string `json:"name"`
+	Type    string `json:"type"`
+	Size    int    `json:"size"`
+	Mode    uint32 `json:"mode"`
+	ModTime string `json:"mtime"`
+	Ref     string `json:"ref"`
+	Hash    string `json:"-"`
 }
 
 func (m *Meta) free() {
@@ -33,24 +61,42 @@ func (m *Meta) free() {
 	metaPool.Put(m)
 }
 
-func (m *Meta) metaKey() string {
-	hash := blake2b.New256()
-	hash.Write([]byte(m.Name))
-	hash.Write([]byte(m.Type))
-	hash.Write([]byte(strconv.Itoa(int(m.Size))))
-	hash.Write([]byte(strconv.Itoa(int(m.Mode))))
-	hash.Write([]byte(m.ModTime))
-	hash.Write([]byte(m.Ref))
-	return fmt.Sprintf("%x", hash.Sum(nil))
+func (m *Meta) FetchMetaContent(bs *client2.BlobStore) (*MetaContent, error) {
+	blob, err := bs.Get(m.Ref)
+	if err != nil {
+		return nil, err
+	}
+	mc := &MetaContent{}
+	if err := json.Unmarshal(blob, mc); err != nil {
+		return nil, err
+	}
+	return mc, nil
+}
+
+func (m *Meta) Json() (string, []byte) {
+	js, err := json.Marshal(m)
+	if err != nil {
+		panic(err)
+	}
+	h := fmt.Sprintf("%x", blake2b.Sum256(js))
+	return h, js
 }
 
 func NewMeta() *Meta {
 	return metaPool.Get().(*Meta)
 }
 
-func (m *Meta) ComputeHash() {
-	m.Hash = m.metaKey()
-	return
+func NewMetaFromBlobStore(bs *client2.BlobStore, hash string) (*Meta, error) {
+	blob, err := bs.Get(hash)
+	if err != nil {
+		return nil, err
+	}
+	meta := NewMeta()
+	if err := json.Unmarshal(blob, meta); err != nil {
+		return nil, err
+	}
+	meta.Hash = hash
+	return meta, err
 }
 
 // IsFile returns true if the Meta is a file.

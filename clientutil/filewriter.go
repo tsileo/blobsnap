@@ -10,10 +10,7 @@ import (
 
 	"github.com/dchest/blake2b"
 
-	"github.com/tsileo/blobstash/client"
-	"github.com/tsileo/blobstash/client/transaction"
-	"github.com/tsileo/blobstash/client/ctx"
-	"github.com/tsileo/blobstash/rolling"
+	"github.com/tsileo/blobsnap/rolling"
 )
 
 var (
@@ -23,7 +20,8 @@ var (
 
 // FileWriter reads the file byte and byte and upload it,
 // chunk by chunk, it also constructs the file index .
-func (up *Uploader) FileWriter(cctx *ctx.Ctx, tx *transaction.Transaction, key, path string) (*WriteResult, error) {
+func (up *Uploader) FileWriter(key, path string) (string, *WriteResult, error) {
+	metaContent := NewMetaContent()
 	writeResult := NewWriteResult()
 	// Init the rolling checksum
 	window := 64
@@ -32,7 +30,7 @@ func (up *Uploader) FileWriter(cctx *ctx.Ctx, tx *transaction.Transaction, key, 
 	f, err := os.Open(path)
 	defer f.Close()
 	if err != nil {
-		return writeResult, fmt.Errorf("can't open file %v: %v", path, err)
+		return "", writeResult, fmt.Errorf("can't open file %v: %v", path, err)
 	}
 	// Prepare the reader to compute the hash on the fly
 	fullHash := blake2b.New256()
@@ -56,12 +54,12 @@ func (up *Uploader) FileWriter(cctx *ctx.Ctx, tx *transaction.Transaction, key, 
 		if (onSplit && (buf.Len() > MinBlobSize)) || buf.Len() >= MaxBlobSize || eof {
 			nsha := fmt.Sprintf("%x", blobHash.Sum(nil))
 			// Check if the blob exists
-			exists, err := up.client.BlobStore.Stat(cctx, nsha)
+			exists, err := up.bs.Stat(nsha)
 			if err != nil {
 				panic(fmt.Sprintf("DB error: %v", err))
 			}
 			if !exists {
-				if err := up.client.BlobStore.Put(cctx, nsha, buf.Bytes()); err != nil {
+				if err := up.bs.Put(nsha, buf.Bytes()); err != nil {
 					panic(fmt.Errorf("failed to PUT blob %v", err))
 				}
 				writeResult.BlobsUploaded++
@@ -75,7 +73,8 @@ func (up *Uploader) FileWriter(cctx *ctx.Ctx, tx *transaction.Transaction, key, 
 			blobHash.Reset()
 			writeResult.BlobsCount++
 			// Save the location and the blob hash into a sorted list (with the offset as index)
-			tx.Ladd(key, writeResult.Size, nsha)
+			metaContent.Add(writeResult.Size, nsha)
+			//tx.Ladd(key, writeResult.Size, nsha)
 		}
 		if eof {
 			break
@@ -84,10 +83,15 @@ func (up *Uploader) FileWriter(cctx *ctx.Ctx, tx *transaction.Transaction, key, 
 	writeResult.Hash = fmt.Sprintf("%x", fullHash.Sum(nil))
 	writeResult.FilesCount++
 	writeResult.FilesUploaded++
-	return writeResult, nil
+	mhash, mjs := metaContent.Json()
+	if up.bs.Put(mhash, mjs); err != nil {
+		return "", nil, err
+	}
+	// TODO where to store mhash ? vkv ?
+	return mhash, writeResult, nil
 }
 
-func (up *Uploader) PutFile(cctx *ctx.Ctx, tx *transaction.Transaction, path string) (*Meta, *WriteResult, error) {
+func (up *Uploader) PutFile(path string) (*Meta, *WriteResult, error) {
 	up.StartUpload()
 	defer up.UploadDone()
 	fstat, err := os.Stat(path)
@@ -96,57 +100,48 @@ func (up *Uploader) PutFile(cctx *ctx.Ctx, tx *transaction.Transaction, path str
 	}
 	_, filename := filepath.Split(path)
 	sha := FullHash(path)
-	con := up.client.ConnWithCtx(cctx)
-	defer con.Close()
-	newTx := false
-	if tx == nil {
-		newTx = true
-		tx = client.NewTransaction()
-	}
 	// First we check if the file isn't already uploaded,
 	// if so we skip it.
-	cnt, err := up.client.Llen(con, sha)
-	if err != nil {
-		return nil, nil, fmt.Errorf("error LLEN %v: %v", sha, err)
-	}
+
+	// TODO use vkv to check the file: full hash => mete content hash
+
+	//exists, err := up.bs.Stat(sha)
+	//if err != nil {
+	//	return nil, nil, fmt.Errorf("failed to stat %v: %v", sha, err)
+	//}
+	metaRef := ""
+	exists := false
 	wr := NewWriteResult()
-	if cnt > 0 || fstat.Size() == 0 {
+	if exists || fstat.Size() == 0 {
 		wr.Hash = sha
 		wr.AlreadyExists = true
 		wr.FilesSkipped++
 		wr.FilesCount++
 		wr.SizeSkipped = int(fstat.Size())
 		wr.Size = wr.SizeSkipped
-		wr.BlobsCount += cnt
-		wr.BlobsSkipped += cnt
-	}
-	if cnt == 0 {
-		cwr, err := up.FileWriter(cctx, tx, sha, path)
+		//	wr.BlobsCount += cnt
+		//		wr.BlobsSkipped += cnt
+	} else {
+		mref, cwr, err := up.FileWriter(sha, path)
 		if err != nil {
 			return nil, nil, err
 		}
 		wr.free()
 		wr = cwr
+		metaRef = mref
 	}
 	meta := NewMeta()
-	meta.Ref = sha
+	meta.Ref = metaRef
 	meta.Name = filename
 	meta.Size = int(fstat.Size())
 	meta.Type = "file"
 	meta.ModTime = fstat.ModTime().Format(time.RFC3339)
 	meta.Mode = uint32(fstat.Mode())
-	meta.ComputeHash()
-	hlen, err := up.client.Hlen(con, meta.Hash)
-	if err != nil {
-		return nil, nil, err
+	//meta.ComputeHash()
+	mhash, mjs := meta.Json()
+	if err := up.bs.Put(mhash, mjs); err != nil {
+		return nil, nil, fmt.Errorf("failed to put blob %v: %v", mhash, err)
 	}
-	if hlen == 0 {
-		tx.Hmset(meta.Hash, client.FormatStruct(meta)...)
-	}
-	if newTx {
-		if err := up.client.Commit(cctx, tx); err != nil {
-			return meta, wr, err
-		}
-	}
+	meta.Hash = mhash
 	return meta, wr, nil
 }

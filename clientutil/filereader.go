@@ -7,14 +7,12 @@ import (
 	"os"
 
 	"github.com/dchest/blake2b"
-	"github.com/garyburd/redigo/redis"
 
-	"github.com/tsileo/blobstash/client"
-	"github.com/tsileo/blobstash/client/ctx"
+	"github.com/tsileo/blobstash/client2"
 )
 
 // Download a file by its hash to path
-func GetFile(cl *client.Client, cctx *ctx.Ctx, key, path string) (*ReadResult, error) {
+func GetFile(bs *client2.BlobStore, key, path string) (*ReadResult, error) {
 	readResult := &ReadResult{}
 	buf, err := os.Create(path)
 	defer buf.Close()
@@ -22,14 +20,12 @@ func GetFile(cl *client.Client, cctx *ctx.Ctx, key, path string) (*ReadResult, e
 		return nil, err
 	}
 	h := blake2b.New256()
-	con := cl.ConnWithCtx(cctx)
-	defer con.Close()
-	meta := NewMeta()
-	if err := cl.HscanStruct(con, key, meta); err != nil {
+	meta, err := NewMetaFromBlobStore(bs, key)
+	if err != nil {
 		return nil, fmt.Errorf("failed to get meta %v: %v", key, err)
 	}
 	meta.Hash = key
-	ffile := NewFakeFile(cl, cctx, meta.Ref, meta.Size)
+	ffile := NewFakeFile(bs, meta)
 	defer ffile.Close()
 	fileReader := io.TeeReader(ffile, h)
 	io.Copy(buf, fileReader)
@@ -49,40 +45,41 @@ func GetFile(cl *client.Client, cctx *ctx.Ctx, key, path string) (*ReadResult, e
 	return readResult, nil
 }
 
+type IndexValue struct {
+	Index int
+	Value string
+}
+
 // FakeFile implements io.Reader, and io.ReaderAt.
 // It fetch blobs on the fly.
 type FakeFile struct {
-	client  *client.Client
-	ctx     *ctx.Ctx
+	bs      *client2.BlobStore
+	meta    *Meta
 	ref     string
 	offset  int
 	size    int
 	llen    int
-	lmrange []struct {
-		Index int
-		Value string
-	}
+	lmrange []*IndexValue
 }
 
 // NewFakeFile creates a new FakeFile instance.
-func NewFakeFile(client *client.Client, cctx *ctx.Ctx, ref string, size int) (f *FakeFile) {
+func NewFakeFile(bs *client2.BlobStore, meta *Meta) (f *FakeFile) {
 	// Needed for the blob routing
 	f = &FakeFile{
-		client: client,
-		ref:    ref,
-		size:   size,
-		ctx:    cctx,
+		bs:      bs,
+		meta:    meta,
+		ref:     meta.Ref,
+		size:    meta.Size,
+		lmrange: []*IndexValue{},
 	}
-	con := f.client.ConnWithCtx(cctx)
-	defer con.Close()
-	values, err := redis.Values(con.Do("LITER", f.ref, "WITH", "RANGE"))
+	metacontent, err := meta.FetchMetaContent(bs)
 	if err != nil {
-		cnt, err := client.Llen(con, f.ref)
-		if err != nil || cnt != 0 {
-			panic(fmt.Errorf("error %+v [LITER %v WITH RANGE]: %v", f, f.ref, err))
-		}
+		panic(err)
 	}
-	redis.ScanSlice(values, &f.lmrange)
+	for _, m := range metacontent.Mapping {
+		data := m.([]interface{})
+		f.lmrange = append(f.lmrange, &IndexValue{Index: int(data[0].(float64)), Value: data[1].(string)})
+	}
 	return
 }
 
@@ -126,7 +123,7 @@ func (f *FakeFile) read(offset, cnt int) ([]byte, error) {
 			continue
 		}
 		//bbuf, _, _ := f.client.Blobs.Get(iv.Value)
-		bbuf, err := f.client.BlobStore.Get(f.ctx, iv.Value)
+		bbuf, err := f.bs.Get(iv.Value)
 		if err != nil {
 			return nil, fmt.Errorf("failed to fetch blob %v: %v", iv.Value, err)
 		}
