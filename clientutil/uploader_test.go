@@ -17,6 +17,8 @@ func check(err error) {
 
 func TestUploader(t *testing.T) {
 	bs := client2.NewBlobStore("")
+	// setup the blobstore pipeline for async upload
+	bs.ProcessBlobs()
 	kvs := client2.NewKvStore("")
 	up := NewUploader(bs, kvs)
 
@@ -27,7 +29,7 @@ func TestUploader(t *testing.T) {
 	meta, wr, err := up.PutFile(fname)
 	check(err)
 
-	time.Sleep(1 * time.Second)
+	time.Sleep(2 * time.Second)
 
 	rr, err := GetFile(bs, meta.Hash, fname+"restored")
 	defer os.Remove(fname + "restored")
@@ -41,7 +43,7 @@ func TestUploader(t *testing.T) {
 	check(err)
 	t.Logf("%v %v %v %v", up, meta, wr, rr)
 
-	time.Sleep(3 * time.Second)
+	time.Sleep(4 * time.Second)
 	rr, err = GetDir(bs, meta.Hash, path+"restored")
 	defer os.RemoveAll(path + "restored")
 	check(err)
