@@ -84,8 +84,6 @@ func Mount(server string, mountpoint string, stop <-chan bool, stopped chan<- bo
 			log.Printf("got stop")
 			break
 		}
-		log.Println("Closing client...")
-		//client.Blobs.Close()
 		log.Printf("Unmounting %v...\n", mountpoint)
 		err := fuse.Unmount(mountpoint)
 		if err != nil {
@@ -140,7 +138,6 @@ func (fs *FS) Reload() error {
 		return fmt.Errorf("failed kvs.Keys: %v", err)
 	}
 	for _, kv := range keys {
-		log.Printf("%+v", kv)
 		snapshot := &snapshot.Snapshot{}
 		if err := json.Unmarshal([]byte(kv.Value), snapshot); err != nil {
 			return fmt.Errorf("failed to unmarshal: %v", err)
@@ -283,7 +280,6 @@ func (d *Dir) loadDir() (out []fuse.Dirent, err fuse.Error) {
 		return out, err
 	case HostLatest:
 		d.fs.Reload()
-		log.Printf("HostLatest")
 		for _, snap := range d.fs.SnapSets[d.Ref] {
 			meta, err := snap.FetchMeta(d.fs.bs)
 			if err != nil {
