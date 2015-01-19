@@ -1,16 +1,14 @@
 package fs
 
 import (
-	"testing"
+	"io/ioutil"
 	"os"
 	"os/exec"
-	"io/ioutil"
 	"path/filepath"
-	"log"
+	"testing"
 	"time"
 
 	"github.com/tsileo/blobstash/test"
-	"github.com/tsileo/blobstash/client"
 
 	"github.com/tsileo/blobsnap/snapshot"
 )
@@ -23,24 +21,21 @@ func check(e error) {
 
 func TestFS(t *testing.T) {
 	// Setup server
-	s, err := test.NewTestServer(t)
-	check(err)
-	go s.Start()
-	if err := s.TillReady(); err != nil {
-		t.Fatalf("server error:\n%v", err)
-	}
-	defer s.Shutdown()
-	log.Println("Server setup done")
+	//s, err := test.NewTestServer(t)
+	//check(err)
+	//go s.Start()
+	//if err := s.TillReady(); err != nil {
+	//	t.Fatalf("server error:\n%v", err)
+	//}
+	//defer s.Shutdown()
+	//log.Println("Server setup done")
 	// Setup FS
 	tempDir, err := ioutil.TempDir("", "blobtools-blobfs-test-")
 	check(err)
 	defer os.RemoveAll(tempDir)
 	stop := make(chan bool, 1)
 	stopped := make(chan bool, 1)
-	cl, err := client.New("")
-	defer cl.Close()
-	check(err)
-	go Mount(cl, tempDir, stop, stopped)
+	go Mount("", tempDir, stop, stopped)
 	// DO TEST HERE
 	// random tree with client +
 	// test.Diff
@@ -56,7 +51,7 @@ func TestFS(t *testing.T) {
 	t.Logf("Upload done")
 
 	// Wait for the meta blob to be appplied
-	time.Sleep(2*time.Second)
+	time.Sleep(2 * time.Second)
 
 	hostname, err := os.Hostname()
 	check(err)
@@ -67,9 +62,9 @@ func TestFS(t *testing.T) {
 	restoredPath := filepath.Join(tempDir, hostname, "latest", meta.Name)
 	if err := test.Diff(tdir, restoredPath); err != nil {
 		t.Logf("ls result: \n%v", string(out))
-		t.Errorf("failed to diff the FS: %v\nServer output: %v", err, s.Out())
+		t.Errorf("failed to diff the FS: %v\nServer output: %v", err, "")
 	}
 
-	stop <-true
+	stop <- true
 	<-stopped
 }

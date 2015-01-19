@@ -13,13 +13,13 @@ the file/dir (e.g /datadb/mnt/snapshots/writing/2014-05-04T17:42:48+02:00/writin
 package fs
 
 import (
+	"encoding/json"
 	"fmt"
 	"io"
 	"log"
 	"os"
 	"os/signal"
 	"path/filepath"
-	"strconv"
 	"time"
 
 	"bazil.org/fuse"
@@ -27,11 +27,9 @@ import (
 
 	"github.com/jinzhu/now"
 
+	"github.com/tsileo/blobsnap/clientutil"
 	"github.com/tsileo/blobsnap/snapshot"
-	"github.com/tsileo/blobstash/client"
-
-	"github.com/tsileo/blobstash/client/clientutil"
-	"github.com/tsileo/blobstash/client/ctx"
+	"github.com/tsileo/blobstash/client2"
 )
 
 type DirType int
@@ -67,7 +65,7 @@ func (dt DirType) String() string {
 }
 
 // Mount the filesystem to the given mountpoint
-func Mount(client *client.Client, mountpoint string, stop <-chan bool, stopped chan<- bool) {
+func Mount(server string, mountpoint string, stop <-chan bool, stopped chan<- bool) {
 	c, err := fuse.Mount(mountpoint)
 	if err != nil {
 		log.Fatal(err)
@@ -97,7 +95,7 @@ func Mount(client *client.Client, mountpoint string, stop <-chan bool, stopped c
 		}
 	}()
 
-	err = fs.Serve(c, NewFS(client))
+	err = fs.Serve(c, NewFS(server))
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -109,16 +107,51 @@ func Mount(client *client.Client, mountpoint string, stop <-chan bool, stopped c
 }
 
 type FS struct {
+	Hosts    []string
+	SnapSets map[string][]*snapshot.Snapshot
+
 	RootDir *Dir
-	Client  *client.Client
+	bs      *client2.BlobStore
+	kvs     *client2.KvStore
 }
 
 // NewFS initialize a new file system.
-func NewFS(client *client.Client) (fs *FS) {
+func NewFS(server string) (fs *FS) {
 	// Override supported time format
 	now.TimeFormats = []string{"2006-1-2T15:4:5", "2006-1-2T15:4", "2006-1-2T15", "2006-1-2", "2006-1", "2006"}
-	fs = &FS{Client: client}
+	bs := client2.NewBlobStore(server)
+	kvs := client2.NewKvStore(server)
+	fs = &FS{
+		bs:       bs,
+		kvs:      kvs,
+		Hosts:    []string{},
+		SnapSets: map[string][]*snapshot.Snapshot{},
+	}
+	if err := fs.Reload(); err != nil {
+		panic(err)
+	}
 	return
+}
+func (fs *FS) Reload() error {
+	fs.Hosts = []string{}
+	fs.SnapSets = map[string][]*snapshot.Snapshot{}
+	keys, err := fs.kvs.Keys("blobsnap:snapset:", "blobsnap:snapset:\xff", 0)
+	if err != nil {
+		return fmt.Errorf("failed kvs.Keys: %v", err)
+	}
+	for _, kv := range keys {
+		log.Printf("%+v", kv)
+		snapshot := &snapshot.Snapshot{}
+		if err := json.Unmarshal([]byte(kv.Value), snapshot); err != nil {
+			return fmt.Errorf("failed to unmarshal: %v", err)
+		}
+		_, ok := fs.SnapSets[snapshot.Hostname]
+		if !ok {
+			fs.Hosts = append(fs.Hosts, snapshot.Hostname)
+		}
+		fs.SnapSets[snapshot.Hostname] = append(fs.SnapSets[snapshot.Hostname], snapshot)
+	}
+	return nil
 }
 
 func (fs *FS) Root() (fs.Node, fuse.Error) {
@@ -126,7 +159,7 @@ func (fs *FS) Root() (fs.Node, fuse.Error) {
 }
 
 func NewRootDir(fs *FS) (d *Dir) {
-	d = NewDir(fs, Root, "root", &ctx.Ctx{}, "", "", os.ModeDir, "")
+	d = NewDir(fs, Root, "root", "", "", os.ModeDir, "")
 	return d
 }
 
@@ -164,16 +197,12 @@ type Dir struct {
 	Node
 	Type     DirType
 	Children map[string]fs.Node
-	Ctx      *ctx.Ctx
+	Meta     *clientutil.Meta
 }
 
-func NewDir(cfs *FS, dtype DirType, name string, cctx *ctx.Ctx, ref string, modTime string, mode os.FileMode, extra string) (d *Dir) {
-	if cctx == nil {
-		panic(fmt.Errorf("no ctx provided for dir %v/%v", name, ref))
-	}
+func NewDir(cfs *FS, dtype DirType, name string, ref string, modTime string, mode os.FileMode, extra string) (d *Dir) {
 	d = &Dir{}
 	d.Type = dtype
-	d.Ctx = cctx
 	d.Node = Node{}
 	d.Mode = os.ModeDir
 	d.fs = cfs
@@ -187,28 +216,30 @@ func NewDir(cfs *FS, dtype DirType, name string, cctx *ctx.Ctx, ref string, modT
 }
 
 func (d *Dir) readDir() (out []fuse.Dirent, ferr fuse.Error) {
-	con := d.fs.Client.ConnWithCtx(d.Ctx)
-	defer con.Close()
-	metaHashes, err := d.fs.Client.Smembers(con, d.Ref)
+	meta, err := clientutil.NewMetaFromBlobStore(d.fs.bs, d.Ref)
 	if err != nil {
-		if cnt, err := d.fs.Client.Scard(con, d.Ref); cnt != 0 || err != nil {
-			panic(err)
-		}
+		panic(err)
 	}
-	for _, hash := range metaHashes {
-		meta := clientutil.NewMeta()
-		if err := d.fs.Client.HscanStruct(con, hash, meta); err != nil {
-			panic(fmt.Errorf("failed to fetch meta %v: %v", hash, err))
+	if meta.Size > 0 {
+		metacontent, err := meta.FetchMetaContent(d.fs.bs)
+		if err != nil {
+			return nil, fmt.Errorf("failed to fetch meta content: %v", err)
 		}
-		var dirent fuse.Dirent
-		if meta.Type == "file" {
-			dirent = fuse.Dirent{Name: meta.Name, Type: fuse.DT_File}
-			d.Children[meta.Name] = NewFile(d.fs, meta.Name, d.Ctx, meta.Ref, meta.Size, meta.ModTime, os.FileMode(meta.Mode))
-		} else {
-			dirent = fuse.Dirent{Name: meta.Name, Type: fuse.DT_Dir}
-			d.Children[meta.Name] = NewDir(d.fs, BasicDir, meta.Name, d.Ctx, meta.Ref, meta.ModTime, os.FileMode(meta.Mode), "")
+		for _, hash := range metacontent.Mapping {
+			meta, err := clientutil.NewMetaFromBlobStore(d.fs.bs, hash.(string))
+			if err != nil {
+				return nil, fmt.Errorf("failed to fetch meta: %v", err)
+			}
+			var dirent fuse.Dirent
+			if meta.Type == "file" {
+				dirent = fuse.Dirent{Name: meta.Name, Type: fuse.DT_File}
+				d.Children[meta.Name] = NewFile(d.fs, meta.Name, meta.Ref, meta.Size, meta.ModTime, os.FileMode(meta.Mode))
+			} else {
+				dirent = fuse.Dirent{Name: meta.Name, Type: fuse.DT_Dir}
+				d.Children[meta.Name] = NewDir(d.fs, BasicDir, meta.Name, meta.Ref, meta.ModTime, os.FileMode(meta.Mode), "")
+			}
+			out = append(out, dirent)
 		}
-		out = append(out, dirent)
 	}
 	return
 }
@@ -233,95 +264,80 @@ func (d *Dir) ReadDir(intr fs.Intr) (out []fuse.Dirent, err fuse.Error) {
 
 func (d *Dir) loadDir() (out []fuse.Dirent, err fuse.Error) {
 	log.Printf("OP loadDir %v", d)
+	d.fs.Reload()
+	// TODO only reload when needed
 	switch d.Type {
 	case Root:
 		d.Children = make(map[string]fs.Node)
-		con := d.fs.Client.ConnWithCtx(d.Ctx)
-		defer con.Close()
-		hosts, err := d.fs.Client.Smembers(con, "blobsnap:hostnames")
-		if err != nil {
-			panic("failed to fetch hosts")
-		}
-		for _, host := range hosts {
+		for _, host := range d.fs.Hosts {
 			out = append(out, fuse.Dirent{Name: host, Type: fuse.DT_Dir})
-			d.Children[host] = NewDir(d.fs, HostRoot, host, d.Ctx, host, "", os.ModeDir, "")
+			d.Children[host] = NewDir(d.fs, HostRoot, host, host, "", os.ModeDir, "")
 		}
 		return out, err
 	case HostRoot:
 		d.Children = make(map[string]fs.Node)
 		out = append(out, fuse.Dirent{Name: "latest", Type: fuse.DT_Dir})
-		d.Children["latest"] = NewDir(d.fs, HostLatest, "latest", d.Ctx, d.Ref, "", os.ModeDir, "")
+		d.Children["latest"] = NewDir(d.fs, HostLatest, "latest", d.Ref, "", os.ModeDir, "")
 		out = append(out, fuse.Dirent{Name: "snapshots", Type: fuse.DT_Dir})
-		d.Children["snapshots"] = NewDir(d.fs, HostSnapshots, "snapshots", d.Ctx, d.Ref, "", os.ModeDir, "")
+		d.Children["snapshots"] = NewDir(d.fs, HostSnapshots, "snapshots", d.Ref, "", os.ModeDir, "")
 		return out, err
 	case HostLatest:
 		log.Printf("HostLatest")
-		snapshots, herr := snapshot.HostLatest(d.Ref)
-		if herr != nil {
-			panic(herr)
-		}
-		// TODO make snapshot.HostLatest return a []*clientutil.Meta ?
-		for _, data := range snapshots["snapshots"].([]interface{}) {
-			meta := data.(map[string]interface{})
-			//metaHash := meta["hash"].(string)
-			metaMode, _ := strconv.Atoi(meta["mode"].(string))
-			metaName := meta["name"].(string)
-			metaRef := meta["ref"].(string)
-			metaMtime := meta["mtime"].(string)
-			if meta["type"] == "file" {
-				dirent := fuse.Dirent{Name: metaName, Type: fuse.DT_File}
-				metaSize, _ := strconv.Atoi(meta["size"].(string))
-				d.Children[metaName] = NewFile(d.fs, metaName, d.Ctx, metaRef, metaSize, metaMtime, os.FileMode(uint32(metaMode)))
+		for _, snap := range d.fs.SnapSets[d.Ref] {
+			meta, err := snap.FetchMeta(d.fs.bs)
+			if err != nil {
+				panic(err)
+			}
+			if meta.IsFile() {
+				dirent := fuse.Dirent{Name: meta.Name, Type: fuse.DT_File}
+				d.Children[meta.Name] = NewFile(d.fs, meta.Name, meta.Ref, meta.Size, meta.ModTime, os.FileMode(uint32(meta.Mode)))
 				out = append(out, dirent)
 			} else {
-				dirent := fuse.Dirent{Name: metaName, Type: fuse.DT_Dir}
-				d.Children[metaName] = NewDir(d.fs, BasicDir, metaName, d.Ctx, metaRef, metaMtime, os.FileMode(metaMode), "")
+				dirent := fuse.Dirent{Name: meta.Name, Type: fuse.DT_Dir}
+				d.Children[meta.Name] = NewDir(d.fs, BasicDir, meta.Name, meta.Ref, meta.ModTime, os.FileMode(meta.Mode), "")
 				out = append(out, dirent)
 			}
 		}
 		return out, err
 	case HostSnapshots:
-		snapshots, herr := snapshot.HostSnapSet(d.Ref)
-		if herr != nil {
-			panic(err)
-		}
-		for _, data := range snapshots["snapshots"].([]interface{}) {
-			snap := data.(map[string]interface{})
-			snapName := filepath.Base(snap["path"].(string))
-			snapHash := snap["hash"].(string)
+		for _, snap := range d.fs.SnapSets[d.Ref] {
+			snapName := filepath.Base(snap.Path)
+			snapHash := snap.SnapSetKey
 			dirent := fuse.Dirent{Name: snapName, Type: fuse.DT_Dir}
-			d.Children[snapName] = NewDir(d.fs, SnapshotsDir, snapName, d.Ctx, snapHash, "", os.ModeDir, "")
+			d.Children[snapName] = NewDir(d.fs, SnapshotsDir, snapName, snapHash, "", os.ModeDir, "")
 			out = append(out, dirent)
 		}
 		return out, err
 	case SnapshotsDir:
-		snapshots, herr := snapshot.Snapshots(d.Ref)
-		if herr != nil {
+		versions, err := d.fs.kvs.Versions(fmt.Sprintf("blobsnap:snapset:%v", d.Ref), 0, int(time.Now().UTC().UnixNano()), 0)
+		if err != nil {
 			panic(err)
 		}
-		for _, data := range snapshots["snapshots"].([]interface{}) {
-			iv := data.(map[string]interface{})
-			stime := time.Unix(int64(iv["index"].(float64)), 0)
+		for _, kv := range versions.Versions {
+			snap := &snapshot.Snapshot{}
+			if err := json.Unmarshal([]byte(kv.Value), snap); err != nil {
+				panic(err)
+			}
+			stime := time.Unix(0, int64(kv.Version))
 			sname := stime.Format(time.RFC3339)
 			dirent := fuse.Dirent{Name: sname, Type: fuse.DT_Dir}
-			d.Children[sname] = NewDir(d.fs, SnapshotDir, sname, d.Ctx, iv["value"].(string), "", os.ModeDir, d.Name)
+			d.Children[sname] = NewDir(d.fs, SnapshotDir, sname, snap.Ref, "", os.ModeDir, d.Name)
 			out = append(out, dirent)
+
 		}
 		return out, err
 	case SnapshotDir:
-		con := d.fs.Client.ConnWithCtx(d.Ctx)
-		defer con.Close()
-		meta := clientutil.NewMeta()
-		if err := d.fs.Client.HscanStruct(con, d.Ref, meta); err != nil {
+		meta, err := clientutil.NewMetaFromBlobStore(d.fs.bs, d.Ref)
+		if err != nil {
 			panic(err)
 		}
 		var dirent fuse.Dirent
-		if meta.Type == "file" {
+		if meta.IsFile() {
 			dirent = fuse.Dirent{Name: meta.Name, Type: fuse.DT_File}
-			d.Children[meta.Name] = NewFile(d.fs, meta.Name, d.Ctx, meta.Ref, meta.Size, meta.ModTime, os.FileMode(meta.Mode))
+			d.Children[meta.Name] = NewFile(d.fs, meta.Name, meta.Ref, meta.Size, meta.ModTime, os.FileMode(meta.Mode))
 		} else {
 			dirent = fuse.Dirent{Name: meta.Name, Type: fuse.DT_Dir}
-			d.Children[meta.Name] = NewDir(d.fs, BasicDir, meta.Name, d.Ctx, meta.Ref, meta.ModTime, os.FileMode(meta.Mode), "")
+			d.Children[meta.Name] = NewDir(d.fs, BasicDir, meta.Name, meta.Ref, meta.ModTime, os.FileMode(meta.Mode), "")
 		}
 		out = append(out, dirent)
 		return out, err
@@ -331,19 +347,23 @@ func (d *Dir) loadDir() (out []fuse.Dirent, err fuse.Error) {
 
 type File struct {
 	Node
-	Ctx      *ctx.Ctx
+	Meta     *clientutil.Meta
 	FakeFile *clientutil.FakeFile
 }
 
-func NewFile(fs *FS, name string, cctx *ctx.Ctx, ref string, size int, modTime string, mode os.FileMode) *File {
+func NewFile(fs *FS, name string, ref string, size int, modTime string, mode os.FileMode) *File {
 	f := &File{}
-	f.Ctx = cctx
 	f.Name = name
 	f.Ref = ref
 	f.Size = uint64(size)
 	f.ModTime = modTime
 	f.Mode = mode
 	f.fs = fs
+	meta, err := clientutil.NewMetaFromBlobStore(fs.bs, ref)
+	if err != nil {
+		panic(err)
+	}
+	f.Meta = meta
 	return f
 }
 
@@ -351,7 +371,7 @@ func (f *File) Attr() fuse.Attr {
 	return fuse.Attr{Inode: 2, Mode: 0444, Size: f.Size}
 }
 func (f *File) Open(req *fuse.OpenRequest, res *fuse.OpenResponse, intr fs.Intr) (fs.Handle, fuse.Error) {
-	f.FakeFile = clientutil.NewFakeFile(f.fs.Client, f.Ctx, f.Ref, int(f.Size))
+	f.FakeFile = clientutil.NewFakeFile(f.fs.bs, f.Meta)
 	return f, nil
 }
 func (f *File) Release(req *fuse.ReleaseRequest, intr fs.Intr) fuse.Error {

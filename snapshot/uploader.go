@@ -9,7 +9,6 @@ import (
 
 	"github.com/dchest/blake2b"
 	"github.com/tsileo/blobsnap/clientutil"
-	"github.com/tsileo/blobstash/client"
 	"github.com/tsileo/blobstash/client2"
 )
 
@@ -20,38 +19,46 @@ type Uploader struct {
 }
 
 func NewUploader(serverAddr string) (*Uploader, error) {
-	cl, err := client.New(serverAddr)
-	if err != nil {
-		return nil, err
-	}
 	bs := client2.NewBlobStore(serverAddr)
 	bs.ProcessBlobs()
 	kvs := client2.NewKvStore(serverAddr)
 	return &Uploader{
 		bs:       bs,
 		kvs:      kvs,
-		Uploader: clientutil.NewUploader(cl),
+		Uploader: clientutil.NewUploader(bs, kvs),
 	}, nil
 }
 
 func (up *Uploader) Close() error {
-	bs.WaitBlobs()
+	up.bs.WaitBlobs()
 	return nil
 }
 
-func (s *Snapshot) SnapSetKey() string {
+type Snapshot struct {
+	Path       string `json:"path"`
+	Hostname   string `json:"hostname"`
+	Ref        string `json:"ref"`
+	Time       int    `json:"time"`
+	SnapSetKey string `json:"key"`
+}
+
+func (s *Snapshot) ComputeSnapSetKey() string {
 	hash := blake2b.New256()
 	hash.Write([]byte(s.Path))
 	hash.Write([]byte(s.Hostname))
 	return fmt.Sprintf("%x", hash.Sum(nil))
 }
 
-type Snaphot struct {
-	Path       string `json:"path"`
-	Hostname   string `json:"hostname"`
-	Ref        string `json:"ref"`
-	Time       int    `json:"time"`
-	SnapSetKey string `json:"key"`
+func (s *Snapshot) FetchMeta(bs *client2.BlobStore) (*clientutil.Meta, error) {
+	blob, err := bs.Get(s.Ref)
+	if err != nil {
+		return nil, err
+	}
+	m := clientutil.NewMeta()
+	if err := json.Unmarshal(blob, m); err != nil {
+		return nil, err
+	}
+	return m, nil
 }
 
 func (up *Uploader) Put(path string) (*clientutil.Meta, error) {
@@ -70,7 +77,6 @@ func (up *Uploader) Put(path string) (*clientutil.Meta, error) {
 	if err != nil {
 		return meta, err
 	}
-	setKey := SetKey(path, up.Client.Hostname)
 	if wr.SizeUploaded == 0 {
 		log.Println("Nothing has been uploaded, no snapshot will be created.")
 		return meta, nil
@@ -86,12 +92,14 @@ func (up *Uploader) Put(path string) (*clientutil.Meta, error) {
 		Ref:      meta.Hash,
 		Time:     int(t.Unix()),
 	}
-	snap.SnapSetKey = snap.SnapSetKey()
+	snap.SnapSetKey = snap.ComputeSnapSetKey()
 	snapjs, err := json.Marshal(snap)
 	if err != nil {
 		return nil, err
 	}
-	_, err := kvs.Put(fmt.Sprintf("blobsnap:snapset:%v", snap.SnapSetKey), string(snapjs), int(t.UnixNano()))
+	log.Printf("snapjs:%v", string(snapjs))
+	kvr, err := up.kvs.Put(fmt.Sprintf("blobsnap:snapset:%v", snap.SnapSetKey), string(snapjs), int(t.UnixNano()))
+	log.Printf("kvr:%+v", kvr)
 	if err != nil {
 		return nil, err
 	}
