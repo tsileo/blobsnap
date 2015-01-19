@@ -1,20 +1,22 @@
 package snapshot
 
 import (
-	"os"
+	"encoding/json"
 	"fmt"
-	"time"
 	"log"
+	"os"
+	"time"
 
+	"github.com/dchest/blake2b"
+	"github.com/tsileo/blobsnap/clientutil"
 	"github.com/tsileo/blobstash/client"
-	"github.com/tsileo/blobstash/client/ctx"
-	"github.com/tsileo/blobstash/client/clientutil"
+	"github.com/tsileo/blobstash/client2"
 )
 
 type Uploader struct {
-	Client *client.Client
+	bs       *client2.BlobStore
+	kvs      *client2.KvStore
 	Uploader *clientutil.Uploader
-	Ctx *ctx.Ctx
 }
 
 func NewUploader(serverAddr string) (*Uploader, error) {
@@ -22,15 +24,34 @@ func NewUploader(serverAddr string) (*Uploader, error) {
 	if err != nil {
 		return nil, err
 	}
+	bs := client2.NewBlobStore(serverAddr)
+	bs.ProcessBlobs()
+	kvs := client2.NewKvStore(serverAddr)
 	return &Uploader{
-		Client: cl,
+		bs:       bs,
+		kvs:      kvs,
 		Uploader: clientutil.NewUploader(cl),
-		Ctx: &ctx.Ctx{Namespace: "blobsnap"},
 	}, nil
 }
 
 func (up *Uploader) Close() error {
-	return up.Client.Close()
+	bs.WaitBlobs()
+	return nil
+}
+
+func (s *Snapshot) SnapSetKey() string {
+	hash := blake2b.New256()
+	hash.Write([]byte(s.Path))
+	hash.Write([]byte(s.Hostname))
+	return fmt.Sprintf("%x", hash.Sum(nil))
+}
+
+type Snaphot struct {
+	Path       string `json:"path"`
+	Hostname   string `json:"hostname"`
+	Ref        string `json:"ref"`
+	Time       int    `json:"time"`
+	SnapSetKey string `json:"key"`
 }
 
 func (up *Uploader) Put(path string) (*clientutil.Meta, error) {
@@ -40,42 +61,39 @@ func (up *Uploader) Put(path string) (*clientutil.Meta, error) {
 	}
 	var meta *clientutil.Meta
 	var wr *clientutil.WriteResult
-	tx := client.NewTransaction()
 	//var wr *clientutil.WriteResult
 	if info.IsDir() {
-		meta, wr, err = up.Uploader.PutDir(up.Ctx, path)
+		meta, wr, err = up.Uploader.PutDir(path)
 	} else {
-		// If we upload a single, bundle the meta in a single Transaction
-		meta, wr, err = up.Uploader.PutFile(up.Ctx, tx, path)
+		meta, wr, err = up.Uploader.PutFile(path)
 	}
 	if err != nil {
 		return meta, err
 	}
 	setKey := SetKey(path, up.Client.Hostname)
 	if wr.SizeUploaded == 0 {
-		con := up.Client.ConnWithCtx(up.Ctx)
-		defer con.Close()
-		cnt, err := up.Client.Hlen(con, fmt.Sprintf("blobsnap:snapset:%v", setKey))
-		if err != nil {
-			return meta, err
-		}
-		if cnt != 0 {
-			log.Println("Nothing has been uploaded, no snapshot will be created.")
-			return meta, nil
-		}
+		log.Println("Nothing has been uploaded, no snapshot will be created.")
+		return meta, nil
 	}
-	snapSet := &SnapSet{
-		Path: path,
-		Hostname: up.Client.Hostname,
-		Hash: setKey,
+	hostname, err := os.Hostname()
+	if err != nil {
+		return nil, err
 	}
-	//tx.Hmset(fmt.Sprintf("blobsnap:snapshot:%v", snap.Hash), client.FormatStruct(snap)...)
-	tx.Hmset(fmt.Sprintf("blobsnap:snapset:%v", setKey), client.FormatStruct(snapSet)...)
-	tx.Sadd("blobsnap:hostnames", up.Client.Hostname)
-	tx.Sadd(fmt.Sprintf("blobsnap:host:%v", up.Client.Hostname), setKey)
-	tx.Ladd(fmt.Sprintf("blobsnap:snapset:%v:history", setKey), int(time.Now().UTC().Unix()), meta.Hash)
-	if up.Client.Commit(up.Ctx, tx); err != nil {
-		return meta, err
+	t := time.Now().UTC()
+	snap := &Snapshot{
+		Path:     path,
+		Hostname: hostname,
+		Ref:      meta.Hash,
+		Time:     int(t.Unix()),
+	}
+	snap.SnapSetKey = snap.SnapSetKey()
+	snapjs, err := json.Marshal(snap)
+	if err != nil {
+		return nil, err
+	}
+	_, err := kvs.Put(fmt.Sprintf("blobsnap:snapset:%v", snap.SnapSetKey), string(snapjs), int(t.UnixNano()))
+	if err != nil {
+		return nil, err
 	}
 	return meta, nil
 }
