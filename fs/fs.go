@@ -29,7 +29,7 @@ import (
 
 	"github.com/tsileo/blobsnap/clientutil"
 	"github.com/tsileo/blobsnap/snapshot"
-	"github.com/tsileo/blobstash/client2"
+	"github.com/tsileo/blobstash/client"
 )
 
 type DirType int
@@ -111,16 +111,16 @@ type FS struct {
 	SnapSets map[string][]*snapshot.Snapshot
 
 	RootDir *Dir
-	bs      *client2.BlobStore
-	kvs     *client2.KvStore
+	bs      *client.BlobStore
+	kvs     *client.KvStore
 }
 
 // NewFS initialize a new file system.
 func NewFS(server string) (fs *FS) {
 	// Override supported time format
 	now.TimeFormats = []string{"2006-1-2T15:4:5", "2006-1-2T15:4", "2006-1-2T15", "2006-1-2", "2006-1", "2006"}
-	bs := client2.NewBlobStore(server)
-	kvs := client2.NewKvStore(server)
+	bs := client.NewBlobStore(server)
+	kvs := client.NewKvStore(server)
 	fs = &FS{
 		bs:       bs,
 		kvs:      kvs,
@@ -264,10 +264,10 @@ func (d *Dir) ReadDir(intr fs.Intr) (out []fuse.Dirent, err fuse.Error) {
 
 func (d *Dir) loadDir() (out []fuse.Dirent, err fuse.Error) {
 	log.Printf("OP loadDir %v", d)
-	d.fs.Reload()
 	// TODO only reload when needed
 	switch d.Type {
 	case Root:
+		d.fs.Reload()
 		d.Children = make(map[string]fs.Node)
 		for _, host := range d.fs.Hosts {
 			out = append(out, fuse.Dirent{Name: host, Type: fuse.DT_Dir})
@@ -282,6 +282,7 @@ func (d *Dir) loadDir() (out []fuse.Dirent, err fuse.Error) {
 		d.Children["snapshots"] = NewDir(d.fs, HostSnapshots, "snapshots", d.Ref, "", os.ModeDir, "")
 		return out, err
 	case HostLatest:
+		d.fs.Reload()
 		log.Printf("HostLatest")
 		for _, snap := range d.fs.SnapSets[d.Ref] {
 			meta, err := snap.FetchMeta(d.fs.bs)
@@ -300,6 +301,7 @@ func (d *Dir) loadDir() (out []fuse.Dirent, err fuse.Error) {
 		}
 		return out, err
 	case HostSnapshots:
+		d.fs.Reload()
 		for _, snap := range d.fs.SnapSets[d.Ref] {
 			snapName := filepath.Base(snap.Path)
 			snapHash := snap.SnapSetKey

@@ -9,19 +9,19 @@ import (
 
 	"github.com/dchest/blake2b"
 	"github.com/tsileo/blobsnap/clientutil"
-	"github.com/tsileo/blobstash/client2"
+	"github.com/tsileo/blobstash/client"
 )
 
 type Uploader struct {
-	bs       *client2.BlobStore
-	kvs      *client2.KvStore
+	bs       *client.BlobStore
+	kvs      *client.KvStore
 	Uploader *clientutil.Uploader
 }
 
 func NewUploader(serverAddr string) (*Uploader, error) {
-	bs := client2.NewBlobStore(serverAddr)
+	bs := client.NewBlobStore(serverAddr)
 	bs.ProcessBlobs()
-	kvs := client2.NewKvStore(serverAddr)
+	kvs := client.NewKvStore(serverAddr)
 	return &Uploader{
 		bs:       bs,
 		kvs:      kvs,
@@ -49,7 +49,7 @@ func (s *Snapshot) ComputeSnapSetKey() string {
 	return fmt.Sprintf("%x", hash.Sum(nil))
 }
 
-func (s *Snapshot) FetchMeta(bs *client2.BlobStore) (*clientutil.Meta, error) {
+func (s *Snapshot) FetchMeta(bs *client.BlobStore) (*clientutil.Meta, error) {
 	blob, err := bs.Get(s.Ref)
 	if err != nil {
 		return nil, err

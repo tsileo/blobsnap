@@ -6,7 +6,7 @@ import (
 	"sync"
 
 	"github.com/dchest/blake2b"
-	"github.com/tsileo/blobstash/client2"
+	"github.com/tsileo/blobstash/client"
 )
 
 type MetaContent struct {
@@ -61,7 +61,7 @@ func (m *Meta) free() {
 	metaPool.Put(m)
 }
 
-func (m *Meta) FetchMetaContent(bs *client2.BlobStore) (*MetaContent, error) {
+func (m *Meta) FetchMetaContent(bs *client.BlobStore) (*MetaContent, error) {
 	blob, err := bs.Get(m.Ref)
 	if err != nil {
 		return nil, err
@@ -86,7 +86,7 @@ func NewMeta() *Meta {
 	return metaPool.Get().(*Meta)
 }
 
-func NewMetaFromBlobStore(bs *client2.BlobStore, hash string) (*Meta, error) {
+func NewMetaFromBlobStore(bs *client.BlobStore, hash string) (*Meta, error) {
 	blob, err := bs.Get(hash)
 	if err != nil {
 		return nil, err

@@ -8,11 +8,11 @@ import (
 
 	"github.com/dchest/blake2b"
 
-	"github.com/tsileo/blobstash/client2"
+	"github.com/tsileo/blobstash/client"
 )
 
 // Download a file by its hash to path
-func GetFile(bs *client2.BlobStore, key, path string) (*ReadResult, error) {
+func GetFile(bs *client.BlobStore, key, path string) (*ReadResult, error) {
 	readResult := &ReadResult{}
 	buf, err := os.Create(path)
 	defer buf.Close()
@@ -53,7 +53,7 @@ type IndexValue struct {
 // FakeFile implements io.Reader, and io.ReaderAt.
 // It fetch blobs on the fly.
 type FakeFile struct {
-	bs      *client2.BlobStore
+	bs      *client.BlobStore
 	meta    *Meta
 	ref     string
 	offset  int
@@ -63,7 +63,7 @@ type FakeFile struct {
 }
 
 // NewFakeFile creates a new FakeFile instance.
-func NewFakeFile(bs *client2.BlobStore, meta *Meta) (f *FakeFile) {
+func NewFakeFile(bs *client.BlobStore, meta *Meta) (f *FakeFile) {
 	// Needed for the blob routing
 	f = &FakeFile{
 		bs:      bs,
@@ -79,6 +79,7 @@ func NewFakeFile(bs *client2.BlobStore, meta *Meta) (f *FakeFile) {
 	for _, m := range metacontent.Mapping {
 		data := m.([]interface{})
 		f.lmrange = append(f.lmrange, &IndexValue{Index: int(data[0].(float64)), Value: data[1].(string)})
+
 	}
 	return
 }
