@@ -233,10 +233,10 @@ func (d *Dir) readDir() (out []fuse.Dirent, ferr fuse.Error) {
 			var dirent fuse.Dirent
 			if meta.Type == "file" {
 				dirent = fuse.Dirent{Name: meta.Name, Type: fuse.DT_File}
-				d.Children[meta.Name] = NewFile(d.fs, meta.Name, meta.Ref, meta.Size, meta.ModTime, os.FileMode(meta.Mode))
+				d.Children[meta.Name] = NewFile(d.fs, meta.Name, hash.(string), meta.Size, meta.ModTime, os.FileMode(meta.Mode))
 			} else {
 				dirent = fuse.Dirent{Name: meta.Name, Type: fuse.DT_Dir}
-				d.Children[meta.Name] = NewDir(d.fs, BasicDir, meta.Name, meta.Ref, meta.ModTime, os.FileMode(meta.Mode), "")
+				d.Children[meta.Name] = NewDir(d.fs, BasicDir, meta.Name, hash.(string), meta.ModTime, os.FileMode(meta.Mode), "")
 			}
 			out = append(out, dirent)
 		}
@@ -290,11 +290,11 @@ func (d *Dir) loadDir() (out []fuse.Dirent, err fuse.Error) {
 			}
 			if meta.IsFile() {
 				dirent := fuse.Dirent{Name: meta.Name, Type: fuse.DT_File}
-				d.Children[meta.Name] = NewFile(d.fs, meta.Name, meta.Ref, meta.Size, meta.ModTime, os.FileMode(uint32(meta.Mode)))
+				d.Children[meta.Name] = NewFile(d.fs, meta.Name, snap.Ref, meta.Size, meta.ModTime, os.FileMode(uint32(meta.Mode)))
 				out = append(out, dirent)
 			} else {
 				dirent := fuse.Dirent{Name: meta.Name, Type: fuse.DT_Dir}
-				d.Children[meta.Name] = NewDir(d.fs, BasicDir, meta.Name, meta.Ref, meta.ModTime, os.FileMode(meta.Mode), "")
+				d.Children[meta.Name] = NewDir(d.fs, BasicDir, meta.Name, snap.Ref, meta.ModTime, os.FileMode(meta.Mode), "")
 				out = append(out, dirent)
 			}
 		}
@@ -334,10 +334,10 @@ func (d *Dir) loadDir() (out []fuse.Dirent, err fuse.Error) {
 		var dirent fuse.Dirent
 		if meta.IsFile() {
 			dirent = fuse.Dirent{Name: meta.Name, Type: fuse.DT_File}
-			d.Children[meta.Name] = NewFile(d.fs, meta.Name, meta.Ref, meta.Size, meta.ModTime, os.FileMode(meta.Mode))
+			d.Children[meta.Name] = NewFile(d.fs, meta.Name, d.Ref, meta.Size, meta.ModTime, os.FileMode(meta.Mode))
 		} else {
 			dirent = fuse.Dirent{Name: meta.Name, Type: fuse.DT_Dir}
-			d.Children[meta.Name] = NewDir(d.fs, BasicDir, meta.Name, meta.Ref, meta.ModTime, os.FileMode(meta.Mode), "")
+			d.Children[meta.Name] = NewDir(d.fs, BasicDir, meta.Name, d.Ref, meta.ModTime, os.FileMode(meta.Mode), "")
 		}
 		out = append(out, dirent)
 		return out, err
