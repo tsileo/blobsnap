@@ -2,6 +2,7 @@ package fs
 
 import (
 	"io/ioutil"
+	"log"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -21,14 +22,14 @@ func check(e error) {
 
 func TestFS(t *testing.T) {
 	// Setup server
-	//s, err := test.NewTestServer(t)
-	//check(err)
-	//go s.Start()
-	//if err := s.TillReady(); err != nil {
-	//	t.Fatalf("server error:\n%v", err)
-	//}
-	//defer s.Shutdown()
-	//log.Println("Server setup done")
+	s, err := test.NewTestServer(t)
+	check(err)
+	go s.Start()
+	if err := s.TillReady(); err != nil {
+		t.Fatalf("server error:\n%v", err)
+	}
+	defer s.Shutdown()
+	log.Println("Server setup done")
 	// Setup FS
 	tempDir, err := ioutil.TempDir("", "blobtools-blobfs-test-")
 	check(err)
@@ -62,7 +63,7 @@ func TestFS(t *testing.T) {
 	restoredPath := filepath.Join(tempDir, hostname, "latest", meta.Name)
 	if err := test.Diff(tdir, restoredPath); err != nil {
 		t.Logf("ls result: \n%v", string(out))
-		t.Errorf("failed to diff the FS: %v\nServer output: %v", err, "")
+		t.Errorf("failed to diff the FS: %v\nServer output: %v", err, s.Out())
 	}
 
 	stop <- true
