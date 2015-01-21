@@ -74,12 +74,12 @@ func (up *Uploader) Put(path string) (*clientutil.Meta, error) {
 	if terminal.IsTerminal(syscall.Stdin) {
 		up.isTerminal = true
 		up.logTicker = time.NewTicker(time.Second * 1)
+		go func() {
+			for _ = range up.logTicker.C {
+				fmt.Printf("%v\r\r\r\r\r", up.Uploader.Wr)
+			}
+		}()
 	}
-	go func() {
-		for _ = range up.logTicker.C {
-			fmt.Printf("%v\r\r\r\r\r", up.Uploader.Wr)
-		}
-	}()
 	var meta *clientutil.Meta
 	var wr *clientutil.WriteResult
 	//var wr *clientutil.WriteResult
