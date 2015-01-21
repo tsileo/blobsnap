@@ -126,9 +126,16 @@ func (up *Uploader) DirWriterNode(node *node) {
 	}
 	mhash, mjs := mc.Json()
 	//cnt, err := up.client.Scard(con, node.wr.Hash)
-	if err := up.bs.Put(mhash, mjs); err != nil {
+	mexists, err := up.bs.Stat(mhash)
+	if err != nil {
 		node.err = err
 		return
+	}
+	if !mexists {
+		if err := up.bs.Put(mhash, mjs); err != nil {
+			node.err = err
+			return
+		}
 	}
 	node.wr.Hash = mhash
 	if node.skipped {
@@ -158,9 +165,16 @@ func (up *Uploader) DirWriterNode(node *node) {
 	node.meta.ModTime = node.fi.ModTime().Format(time.RFC3339)
 	mhash, mjs = node.meta.Json()
 	node.meta.Hash = mhash
-	if err := up.bs.Put(mhash, mjs); err != nil {
+	mexists, err = up.bs.Stat(mhash)
+	if err != nil {
 		node.err = err
 		return
+	}
+	if !mexists {
+		if err := up.bs.Put(mhash, mjs); err != nil {
+			node.err = err
+			return
+		}
 	}
 	node.done = true
 	node.cond.Broadcast()

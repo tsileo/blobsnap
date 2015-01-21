@@ -153,8 +153,14 @@ func (up *Uploader) PutFile(path string) (*Meta, *WriteResult, error) {
 	meta.Mode = uint32(fstat.Mode())
 	//meta.ComputeHash()
 	mhash, mjs := meta.Json()
-	if err := up.bs.Put(mhash, mjs); err != nil {
-		return nil, nil, fmt.Errorf("failed to put blob %v: %v", mhash, err)
+	mexists, err := up.bs.Stat(mhash)
+	if err != nil {
+		return nil, nil, fmt.Errorf("failed to stat blob %v: %v", mhash, err)
+	}
+	if !mexists {
+		if err := up.bs.Put(mhash, mjs); err != nil {
+			return nil, nil, fmt.Errorf("failed to put blob %v: %v", mhash, err)
+		}
 	}
 	meta.Hash = mhash
 	return meta, wr, nil
