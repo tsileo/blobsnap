@@ -11,6 +11,7 @@ import (
 	"github.com/dchest/blake2b"
 
 	"github.com/tsileo/blobsnap/rolling"
+	"github.com/tsileo/blobstash/client"
 )
 
 var (
@@ -110,7 +111,16 @@ func (up *Uploader) PutFile(path string) (*Meta, *WriteResult, error) {
 	//	return nil, nil, fmt.Errorf("failed to stat %v: %v", sha, err)
 	//}
 	metaRef := ""
+	kv, err := up.kvs.Get(fmt.Sprintf("blobsnap:map:%v", sha), -1)
 	exists := false
+	if err != nil {
+		if err != client.ErrKeyNotFound {
+			return nil, nil, fmt.Errorf("failed to query blobsnap:map : %v", err)
+		}
+	} else {
+		metaRef = kv.Value
+		exists = true
+	}
 	wr := NewWriteResult()
 	if exists || fstat.Size() == 0 {
 		wr.Hash = sha
@@ -124,11 +134,15 @@ func (up *Uploader) PutFile(path string) (*Meta, *WriteResult, error) {
 	} else {
 		mref, cwr, err := up.FileWriter(sha, path)
 		if err != nil {
-			return nil, nil, err
+			return nil, nil, fmt.Errorf("FileWriter error: %v", err)
 		}
 		wr.free()
 		wr = cwr
 		metaRef = mref
+		_, err = up.kvs.Put(fmt.Sprintf("blobsnap:map:%v", sha), mref, -1)
+		if err != nil {
+			return nil, nil, fmt.Errorf("failed to update blobsnap:map : %v", err)
+		}
 	}
 	meta := NewMeta()
 	meta.Ref = metaRef

@@ -8,14 +8,13 @@ import (
 	"sort"
 	"sync"
 	"time"
-
-	"github.com/dchest/blake2b"
 )
 
 // node represents either a file or directory in the directory tree
 type node struct {
 	// root of the snapshot
-	root bool
+	root    bool
+	skipped bool
 
 	done bool
 
@@ -91,20 +90,25 @@ func (up *Uploader) DirWriterNode(node *node) {
 	defer node.mu.Unlock()
 	//log.Printf("DirWriterNode %v star", node)
 	node.wr = NewWriteResult()
-	h := blake2b.New256()
 	hashes := []string{}
 
 	// Wait for all children node to finish
+	node.skipped = true
 	for _, cnode := range node.children {
-		if cnode.err != nil {
-			node.err = cnode.err
-			return
-		}
 		cnode.mu.Lock()
 		for !cnode.done {
 			cnode.cond.Wait()
 		}
+		if cnode.err != nil {
+			panic(cnode.err)
+			node.err = cnode.err
+			return
+		}
+		node.skipped = node.skipped && cnode.skipped
 		node.wr.Add(cnode.wr)
+		if up.Wr != nil {
+			up.Wr.Add(cnode.wr)
+		}
 		cnode.wr.free()
 		cnode.wr = nil
 		hashes = append(hashes, cnode.meta.Hash)
@@ -112,26 +116,38 @@ func (up *Uploader) DirWriterNode(node *node) {
 		cnode.meta = nil
 		cnode.mu.Unlock()
 	}
-
 	up.StartDirUpload()
 	defer up.DirUploadDone()
 
 	sort.Strings(hashes)
 	mc := NewMetaContent()
 	for _, hash := range hashes {
-		h.Write([]byte(hash))
 		mc.AddHash(hash)
 	}
-	node.wr.Hash = fmt.Sprintf("%x", h.Sum(nil))
 	mhash, mjs := mc.Json()
 	//cnt, err := up.client.Scard(con, node.wr.Hash)
 	if err := up.bs.Put(mhash, mjs); err != nil {
 		node.err = err
 		return
 	}
-	// TODO store the mhash for directory content
-	node.wr.DirsUploaded++
+	node.wr.Hash = mhash
+	if node.skipped {
+		node.wr.DirsSkipped++
+	} else {
+		node.wr.DirsUploaded++
+	}
 	node.wr.DirsCount++
+	if up.Wr != nil {
+		twr := NewWriteResult()
+		if node.skipped {
+			twr.DirsSkipped++
+		} else {
+			twr.DirsUploaded++
+		}
+		twr.DirsCount++
+		up.Wr.Add(twr)
+		twr.free()
+	}
 	// TODO WriteResult exisiting handling
 	node.meta = NewMeta()
 	node.meta.Name = filepath.Base(node.path)
@@ -146,15 +162,6 @@ func (up *Uploader) DirWriterNode(node *node) {
 		node.err = err
 		return
 	}
-	//node.meta.ComputeHash()
-	//hlen, err := up.client.Hlen(con, node.meta.Hash)
-	//if err != nil {
-	//	node.err = err
-	//	return
-	//}
-	//if hlen == 0 {
-	//	node.tx.Hmset(node.meta.Hash, client.FormatStruct(node.meta)...)
-	//}
 	node.done = true
 	node.cond.Broadcast()
 	return
@@ -206,6 +213,9 @@ func (up *Uploader) PutDir(path string) (*Meta, *WriteResult, error) {
 					node.meta, node.wr, node.err = up.PutFile(node.path)
 					if node.err != nil {
 						n.err = fmt.Errorf("error PutFile with node %v", node)
+					}
+					if node.wr.FilesSkipped == 1 {
+						node.skipped = true
 					}
 					node.done = true
 					node.cond.Broadcast()
