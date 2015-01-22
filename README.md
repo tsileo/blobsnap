@@ -1,6 +1,8 @@
 BlobSnap
 ========
 
+![BlobSnap](http://thomassileo.s3.amazonaws.com/blobsnap2.png)
+
 BlobSnap is a snapshot-based backup system built on top of [BlobStash](https://github.com/tsileo/blobstash), designed to provide "time machine" like features.
 
 ## Features
@@ -95,4 +97,4 @@ BTC 1HpHxwNUmXfrU9MR9WTj8Mpg1YUEry9MF4
 
 ## License
 
-Copyright (c) 2014 Thomas Sileo and contributors. Released under the MIT license.
+Copyright (c) 2014-2015 Thomas Sileo and contributors. Released under the MIT license.
