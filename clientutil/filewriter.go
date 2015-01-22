@@ -88,6 +88,10 @@ func (up *Uploader) FileWriter(key, path string) (string, *WriteResult, error) {
 	if up.bs.Put(mhash, mjs); err != nil {
 		return "", nil, err
 	}
+	writeResult.BlobsCount++
+	writeResult.BlobsUploaded++
+	writeResult.Size += len(mjs)
+	writeResult.SizeUploaded += len(mjs)
 	// TODO where to store mhash ? vkv ?
 	return mhash, writeResult, nil
 }
@@ -100,7 +104,10 @@ func (up *Uploader) PutFile(path string) (*Meta, *WriteResult, error) {
 		return nil, nil, err
 	}
 	_, filename := filepath.Split(path)
-	sha := FullHash(path)
+	sha, err := FullHash(path)
+	if err != nil {
+		return nil, nil, fmt.Errorf("failed to compute fulle hash %v: %v", path, err)
+	}
 	// First we check if the file isn't already uploaded,
 	// if so we skip it.
 
@@ -157,10 +164,16 @@ func (up *Uploader) PutFile(path string) (*Meta, *WriteResult, error) {
 	if err != nil {
 		return nil, nil, fmt.Errorf("failed to stat blob %v: %v", mhash, err)
 	}
+	wr.Size += len(mjs)
 	if !mexists {
 		if err := up.bs.Put(mhash, mjs); err != nil {
 			return nil, nil, fmt.Errorf("failed to put blob %v: %v", mhash, err)
 		}
+		wr.BlobsCount++
+		wr.BlobsUploaded++
+		wr.SizeUploaded += len(mjs)
+	} else {
+		wr.SizeSkipped += len(mjs)
 	}
 	meta.Hash = mhash
 	return meta, wr, nil

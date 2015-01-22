@@ -17,13 +17,18 @@ var wrPool = sync.Pool{
 }
 
 // FullHash is helper to compute the Blake2B of the given file path.
-func FullHash(path string) string {
-	f, _ := os.Open(path)
+func FullHash(path string) (string, error) {
+	f, err := os.Open(path)
+	if err != nil {
+		return "", err
+	}
 	defer f.Close()
 	reader := bufio.NewReader(f)
 	h := blake2b.New256()
-	_, _ = io.Copy(h, reader)
-	return fmt.Sprintf("%x", h.Sum(nil))
+	if _, err := io.Copy(h, reader); err != nil {
+		return "", nil
+	}
+	return fmt.Sprintf("%x", h.Sum(nil)), nil
 }
 
 // NewID generate a random hash that can be used as random key

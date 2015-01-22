@@ -106,9 +106,6 @@ func (up *Uploader) DirWriterNode(node *node) {
 		}
 		node.skipped = node.skipped && cnode.skipped
 		node.wr.Add(cnode.wr)
-		if up.Wr != nil {
-			up.Wr.Add(cnode.wr)
-		}
 		cnode.wr.free()
 		cnode.wr = nil
 		hashes = append(hashes, cnode.meta.Hash)
@@ -125,7 +122,6 @@ func (up *Uploader) DirWriterNode(node *node) {
 		mc.AddHash(hash)
 	}
 	mhash, mjs := mc.Json()
-	//cnt, err := up.client.Scard(con, node.wr.Hash)
 	mexists, err := up.bs.Stat(mhash)
 	if err != nil {
 		node.err = err
@@ -136,6 +132,11 @@ func (up *Uploader) DirWriterNode(node *node) {
 			node.err = err
 			return
 		}
+		node.wr.BlobsCount++
+		node.wr.BlobsUploaded++
+		node.wr.SizeUploaded += len(mjs)
+	} else {
+		node.wr.SizeSkipped += len(mjs)
 	}
 	node.wr.Hash = mhash
 	if node.skipped {
@@ -144,17 +145,6 @@ func (up *Uploader) DirWriterNode(node *node) {
 		node.wr.DirsUploaded++
 	}
 	node.wr.DirsCount++
-	if up.Wr != nil {
-		twr := NewWriteResult()
-		if node.skipped {
-			twr.DirsSkipped++
-		} else {
-			twr.DirsUploaded++
-		}
-		twr.DirsCount++
-		up.Wr.Add(twr)
-		twr.free()
-	}
 	// TODO WriteResult exisiting handling
 	node.meta = NewMeta()
 	node.meta.Name = filepath.Base(node.path)
@@ -175,6 +165,11 @@ func (up *Uploader) DirWriterNode(node *node) {
 			node.err = err
 			return
 		}
+		node.wr.BlobsCount++
+		node.wr.BlobsUploaded++
+		node.wr.SizeUploaded += len(mjs)
+	} else {
+		node.wr.SizeSkipped += len(mjs)
 	}
 	node.done = true
 	node.cond.Broadcast()
