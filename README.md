@@ -1,8 +1,6 @@
 BlobSnap
 ========
 
-![BlobSnap](http://thomassileo.s3.amazonaws.com/blobsnap2.png)
-
 BlobSnap is a snapshot-based backup system built on top of [BlobStash](https://github.com/tsileo/blobstash), designed to provide "time machine" like features.
 
 ## Features
