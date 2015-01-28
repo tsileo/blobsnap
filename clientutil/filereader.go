@@ -72,14 +72,16 @@ func NewFakeFile(bs *client.BlobStore, meta *Meta) (f *FakeFile) {
 		size:    meta.Size,
 		lmrange: []*IndexValue{},
 	}
-	metacontent, err := meta.FetchMetaContent(bs)
-	if err != nil {
-		panic(err)
-	}
-	for _, m := range metacontent.Mapping {
-		data := m.([]interface{})
-		f.lmrange = append(f.lmrange, &IndexValue{Index: int(data[0].(float64)), Value: data[1].(string)})
+	if meta.Size > 0 {
+		metacontent, err := meta.FetchMetaContent(bs)
+		if err != nil {
+			panic(err)
+		}
+		for _, m := range metacontent.Mapping {
+			data := m.([]interface{})
+			f.lmrange = append(f.lmrange, &IndexValue{Index: int(data[0].(float64)), Value: data[1].(string)})
 
+		}
 	}
 	return
 }
@@ -93,7 +95,7 @@ func (f *FakeFile) ReadAt(p []byte, offset int64) (n int, err error) {
 	if len(p) == 0 {
 		return 0, nil
 	}
-	if f.offset >= f.size {
+	if f.size == 0 || f.offset >= f.size {
 		return 0, io.EOF
 	}
 	buf, err := f.read(int(offset), len(p))
@@ -182,7 +184,7 @@ func (f *FakeFile) Read(p []byte) (n int, err error) {
 	if len(p) == 0 {
 		return 0, nil
 	}
-	if f.offset >= f.size {
+	if f.size == 0 || f.offset >= f.size {
 		return 0, io.EOF
 	}
 	n = 0
