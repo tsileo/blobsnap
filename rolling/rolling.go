@@ -3,10 +3,11 @@
 package rolling
 
 const blobSize = 1 << 13
+const charOffset = 31 // Same value as Bup
 
 type RollingSum struct {
-	a      uint16
-	b      uint16
+	a      uint32
+	b      uint32
 	window []byte
 	size   int
 	i      int
@@ -27,13 +28,10 @@ func (rs *RollingSum) Write(data []byte) (n int, err error) {
 }
 
 func (rs *RollingSum) WriteByte(c byte) error {
-	rs.a += -uint16(rs.window[rs.i]) + uint16(c)
-	rs.b += -uint16(rs.size)*uint16(rs.window[rs.i]) + rs.a
-
+	rs.a += -uint32(rs.window[rs.i]) + uint32(c)
+	rs.b += rs.a - uint32(rs.size)*uint32(rs.window[rs.i]+charOffset)
 	rs.window[rs.i] = c
-	if rs.i++; rs.i == rs.size {
-		rs.i = 0
-	}
+	rs.i = (rs.i + 1) % rs.size
 
 	return nil
 }

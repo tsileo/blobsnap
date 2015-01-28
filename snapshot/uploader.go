@@ -40,6 +40,7 @@ type Snapshot struct {
 	Ref         string                  `json:"ref"`
 	Time        int                     `json:"time"`
 	SnapSetKey  string                  `json:"key"`
+	Comment     string                  `json:"comment,omitempty"`
 	WriteResult *clientutil.WriteResult `json:"wr"`
 }
 
