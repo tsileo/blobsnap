@@ -21,7 +21,7 @@ func ParseIgnoreFile(path string) ([]string, error) {
 	}
 	defer f.Close()
 	var patterns []string
-	scanner := bufio.NewScanner(os.Stdin)
+	scanner := bufio.NewScanner(f)
 	for scanner.Scan() {
 		pattern := filepath.Clean(strings.TrimSpace(scanner.Text()))
 		if pattern != "" {

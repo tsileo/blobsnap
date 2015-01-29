@@ -11,17 +11,17 @@ type Uploader struct {
 	bs  *client.BlobStore
 	kvs *client.KvStore
 
-	Wr *WriteResult
-
 	uploader    chan struct{}
 	dirUploader chan struct{}
+
+	Excludes []string
+	Root     string
 }
 
 func NewUploader(bs *client.BlobStore, kvs *client.KvStore) *Uploader {
 	return &Uploader{
 		bs:          bs,
 		kvs:         kvs,
-		Wr:          NewWriteResult(),
 		uploader:    make(chan struct{}, uploader),
 		dirUploader: make(chan struct{}, dirUploader),
 	}

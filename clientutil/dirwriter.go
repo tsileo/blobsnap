@@ -3,11 +3,14 @@ package clientutil
 import (
 	"fmt"
 	"io/ioutil"
+	"log"
 	"os"
 	"path/filepath"
 	"sort"
 	"sync"
 	"time"
+
+	"github.com/tsileo/blobsnap/ignore"
 )
 
 // node represents either a file or directory in the directory tree
@@ -62,6 +65,18 @@ func (up *Uploader) DirExplorer(path string, pnode *node, nodes chan<- *node) {
 	}
 	for _, fi := range dirdata {
 		abspath := filepath.Join(path, fi.Name())
+		relpath, err := filepath.Rel(up.Root, abspath)
+		if err != nil {
+			panic(err)
+		}
+		excluded, err := ignore.Matches(up.Excludes, relpath)
+		if err != nil {
+			panic(err)
+		}
+		if excluded {
+			log.Printf("Uploader: %v excluded", relpath)
+			continue
+		}
 		n := &node{path: abspath, fi: fi, parent: pnode}
 		n.cond.L = &n.mu
 		if fi.IsDir() {
@@ -88,7 +103,6 @@ func (up *Uploader) DirExplorer(path string, pnode *node, nodes chan<- *node) {
 func (up *Uploader) DirWriterNode(node *node) {
 	node.mu.Lock()
 	defer node.mu.Unlock()
-	//log.Printf("DirWriterNode %v star", node)
 	node.wr = NewWriteResult()
 	hashes := []string{}
 
@@ -183,6 +197,14 @@ func (up *Uploader) PutDir(path string) (*Meta, *WriteResult, error) {
 	abspath, err := filepath.Abs(path)
 	if err != nil {
 		return nil, nil, err
+	}
+	up.Root = path
+	if _, err := os.Stat(filepath.Join(path, ".blobsnapignore")); err == nil {
+		patterns, err := ignore.ParseIgnoreFile(filepath.Join(path, ".blobsnapignore"))
+		if err != nil {
+			return nil, nil, fmt.Errorf("failed to parse .blobsnapignore file: %v", err)
+		}
+		up.Excludes = patterns
 	}
 	nodes := make(chan *node)
 	fi, _ := os.Stat(abspath)

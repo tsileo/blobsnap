@@ -71,7 +71,6 @@ func (up *Uploader) Put(path string) (*clientutil.Meta, error) {
 	}
 	var meta *clientutil.Meta
 	var wr *clientutil.WriteResult
-	//var wr *clientutil.WriteResult
 	if info.IsDir() {
 		meta, wr, err = up.Uploader.PutDir(path)
 	} else {
