@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"log"
 	"os"
+	"path/filepath"
 	"time"
 
 	"github.com/dchest/blake2b"
@@ -89,7 +90,7 @@ func (up *Uploader) Put(path string) (*clientutil.Meta, error) {
 	}
 	t := time.Now().UTC()
 	snap := &Snapshot{
-		Path:        path,
+		Path:        filepath.Clean(path),
 		Hostname:    hostname,
 		Ref:         meta.Hash,
 		Time:        int(t.Unix()),
