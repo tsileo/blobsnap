@@ -11,6 +11,8 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+
+	gignore "github.com/sabhiram/go-git-ignore"
 )
 
 // ParseIgnoreFile parses the given file and returns the lists of pattern extracted
@@ -36,14 +38,6 @@ func ParseIgnoreFile(path string) ([]string, error) {
 
 // Matches returns true if name matches at least one of the pattern
 func Matches(patterns []string, path string) (bool, error) {
-	for _, pattern := range patterns {
-		matched, err := filepath.Match(pattern, path)
-		if err != nil {
-			return false, err
-		}
-		if matched {
-			return true, nil
-		}
-	}
-	return false, nil
+	c, _ := gignore.CompileIgnoreLines(patterns...)
+	return c.MatchesPath(path), nil
 }
