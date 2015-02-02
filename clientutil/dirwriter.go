@@ -10,7 +10,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/tsileo/blobsnap/ignore"
+	gignore "github.com/sabhiram/go-git-ignore"
 )
 
 // node represents either a file or directory in the directory tree
@@ -43,17 +43,6 @@ func (node *node) String() string {
 	return fmt.Sprintf("[node %v done=%v, meta=%+v, err=%v]", node.path, node.done, node.meta, node.err)
 }
 
-// excluded returns true if the base path match one of the defined shell pattern
-func (up *Uploader) excluded(path string) bool {
-	//for _, ignoredFile := range client.ignoredFiles {
-	//	matched, _ := filepath.Match(ignoredFile, filepath.Base(path))
-	//	if matched {
-	//		return true
-	//	}
-	//}
-	return false
-}
-
 // Recursively read the directory and
 // send/route the files/directories to the according channel for processing
 func (up *Uploader) DirExplorer(path string, pnode *node, nodes chan<- *node) {
@@ -69,11 +58,7 @@ func (up *Uploader) DirExplorer(path string, pnode *node, nodes chan<- *node) {
 		if err != nil {
 			panic(err)
 		}
-		excluded, err := ignore.Matches(up.Excludes, relpath)
-		if err != nil {
-			panic(err)
-		}
-		if excluded {
+		if up.Ignorer.MatchesPath(relpath) {
 			log.Printf("Uploader: %v excluded", relpath)
 			continue
 		}
@@ -85,13 +70,8 @@ func (up *Uploader) DirExplorer(path string, pnode *node, nodes chan<- *node) {
 			pnode.children = append(pnode.children, n)
 		} else {
 			if fi.Mode()&os.ModeSymlink == 0 {
-				if !up.excluded(abspath) {
-					nodes <- n
-					pnode.children = append(pnode.children, n)
-				}
-				// else {
-				//	log.Printf("DirExplorer: file %v excluded", abspath)
-				//}
+				nodes <- n
+				pnode.children = append(pnode.children, n)
 			}
 		}
 	}
@@ -200,11 +180,11 @@ func (up *Uploader) PutDir(path string) (*Meta, *WriteResult, error) {
 	}
 	up.Root = path
 	if _, err := os.Stat(filepath.Join(path, ".blobsnapignore")); err == nil {
-		patterns, err := ignore.ParseIgnoreFile(filepath.Join(path, ".blobsnapignore"))
+		ignorer, err := gignore.CompileIgnoreFile(filepath.Join(path, ".blobsnapignore"))
 		if err != nil {
 			return nil, nil, fmt.Errorf("failed to parse .blobsnapignore file: %v", err)
 		}
-		up.Excludes = patterns
+		up.Ignorer = ignorer
 	}
 	nodes := make(chan *node)
 	fi, _ := os.Stat(abspath)

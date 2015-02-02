@@ -1,6 +1,9 @@
 package clientutil
 
-import "github.com/tsileo/blobstash/client"
+import (
+	gignore "github.com/sabhiram/go-git-ignore"
+	"github.com/tsileo/blobstash/client"
+)
 
 var (
 	uploader    = 25 // concurrent upload uploaders
@@ -14,8 +17,8 @@ type Uploader struct {
 	uploader    chan struct{}
 	dirUploader chan struct{}
 
-	Excludes []string
-	Root     string
+	Ignorer *gignore.GitIgnore
+	Root    string
 }
 
 func NewUploader(bs *client.BlobStore, kvs *client.KvStore) *Uploader {
