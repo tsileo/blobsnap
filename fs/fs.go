@@ -26,6 +26,7 @@ import (
 	"bazil.org/fuse/fs"
 
 	"github.com/jinzhu/now"
+	"golang.org/x/net/context"
 
 	"github.com/tsileo/blobsnap/clientutil"
 	"github.com/tsileo/blobsnap/snapshot"
@@ -151,7 +152,7 @@ func (fs *FS) Reload() error {
 	return nil
 }
 
-func (fs *FS) Root() (fs.Node, fuse.Error) {
+func (fs *FS) Root() (fs.Node, error) {
 	return NewRootDir(fs), nil
 }
 
@@ -185,7 +186,7 @@ func (n *Node) Attr() fuse.Attr {
 	return attr
 }
 
-func (n *Node) Setattr(req *fuse.SetattrRequest, resp *fuse.SetattrResponse, intr fs.Intr) fuse.Error {
+func (n *Node) Setattr(ctx context.Context, req *fuse.SetattrRequest, resp *fuse.SetattrResponse) error {
 	n.Mode = req.Mode
 	return nil
 }
@@ -212,7 +213,7 @@ func NewDir(cfs *FS, dtype DirType, name string, ref string, modTime string, mod
 	return
 }
 
-func (d *Dir) readDir() (out []fuse.Dirent, ferr fuse.Error) {
+func (d *Dir) readDir() (out []fuse.Dirent, ferr error) {
 	meta, err := clientutil.NewMetaFromBlobStore(d.fs.bs, d.Ref)
 	if err != nil {
 		panic(err)
@@ -241,7 +242,7 @@ func (d *Dir) readDir() (out []fuse.Dirent, ferr fuse.Error) {
 	return
 }
 
-func (d *Dir) Lookup(name string, intr fs.Intr) (fs fs.Node, err fuse.Error) {
+func (d *Dir) Lookup(ctx context.Context, name string) (fs fs.Node, err error) {
 	log.Printf("OP Lookup %v", name)
 	if len(d.Children) == 0 {
 		d.loadDir()
@@ -254,12 +255,12 @@ func (d *Dir) Lookup(name string, intr fs.Intr) (fs fs.Node, err fuse.Error) {
 	return
 }
 
-func (d *Dir) ReadDir(intr fs.Intr) (out []fuse.Dirent, err fuse.Error) {
-	log.Printf("OP ReadDir %v", d)
+func (d *Dir) ReadDirAll(ctx context.Context) (out []fuse.Dirent, err error) {
+	log.Printf("OP ReadDirAll %v", d)
 	return d.loadDir()
 }
 
-func (d *Dir) loadDir() (out []fuse.Dirent, err fuse.Error) {
+func (d *Dir) loadDir() (out []fuse.Dirent, err error) {
 	log.Printf("OP loadDir %v", d)
 	// TODO only reload when needed
 	switch d.Type {
