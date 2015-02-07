@@ -369,16 +369,16 @@ func NewFile(fs *FS, name string, ref string, size int, modTime string, mode os.
 func (f *File) Attr() fuse.Attr {
 	return fuse.Attr{Inode: 2, Mode: 0444, Size: f.Size}
 }
-func (f *File) Open(req *fuse.OpenRequest, res *fuse.OpenResponse, intr fs.Intr) (fs.Handle, fuse.Error) {
+func (f *File) Open(ctx context.Context, req *fuse.OpenRequest, res *fuse.OpenResponse) (fs.Handle, error) {
 	f.FakeFile = clientutil.NewFakeFile(f.fs.bs, f.Meta)
 	return f, nil
 }
-func (f *File) Release(req *fuse.ReleaseRequest, intr fs.Intr) fuse.Error {
+func (f *File) Release(ctx context.Context, req *fuse.ReleaseRequest) error {
 	f.FakeFile.Close()
 	f.FakeFile = nil
 	return nil
 }
-func (f *File) Read(req *fuse.ReadRequest, res *fuse.ReadResponse, intr fs.Intr) fuse.Error {
+func (f *File) Read(ctx context.Context, req *fuse.ReadRequest, res *fuse.ReadResponse) error {
 	//log.Printf("Read %+v", f)
 	if req.Offset >= int64(f.Size) {
 		return nil
