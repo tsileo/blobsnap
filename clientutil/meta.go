@@ -15,15 +15,15 @@ func NewMetaContent() MetaContent {
 	return MetaContent{}
 }
 
-func (mc *MetaContent) Add(index int, hash string) {
+func (mc MetaContent) Add(index int, hash string) {
 	mc = append(mc, []interface{}{index, hash})
 }
 
-func (mc *MetaContent) AddHash(hash string) {
+func (mc MetaContent) AddHash(hash string) {
 	mc = append(mc, hash)
 }
 
-func (mc *MetaContent) Json() (string, []byte) {
+func (mc MetaContent) Json() (string, []byte) {
 	js, err := json.Marshal(mc)
 	if err != nil {
 		panic(err)
@@ -57,7 +57,7 @@ func (m *Meta) free() {
 	metaPool.Put(m)
 }
 
-func (m *Meta) FetchMetaContent(bs *client.BlobStore) (*MetaContent, error) {
+func (m *Meta) FetchMetaContent(bs *client.BlobStore) (MetaContent, error) {
 	blob, err := bs.Get(m.Ref)
 	if err != nil {
 		return nil, err

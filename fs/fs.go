@@ -216,7 +216,7 @@ func (d *Dir) readDir() (out []fuse.Dirent, ferr error) {
 		if err != nil {
 			return nil, fmt.Errorf("failed to fetch meta content: %v", err)
 		}
-		for _, hash := range metacontent.Mapping {
+		for _, hash := range metacontent {
 			meta, err := clientutil.NewMetaFromBlobStore(d.fs.bs, hash.(string))
 			if err != nil {
 				return nil, fmt.Errorf("failed to fetch meta: %v", err)
