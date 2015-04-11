@@ -9,22 +9,18 @@ import (
 	"github.com/tsileo/blobstash/client"
 )
 
-type MetaContent struct {
-	Mapping []interface{} `json:"m"`
-}
+type MetaContent []interface{}
 
-func NewMetaContent() *MetaContent {
-	return &MetaContent{
-		Mapping: []interface{}{},
-	}
+func NewMetaContent() MetaContent {
+	return MetaContent{}
 }
 
 func (mc *MetaContent) Add(index int, hash string) {
-	mc.Mapping = append(mc.Mapping, []interface{}{index, hash})
+	mc = append(mc, []interface{}{index, hash})
 }
 
 func (mc *MetaContent) AddHash(hash string) {
-	mc.Mapping = append(mc.Mapping, hash)
+	mc = append(mc, hash)
 }
 
 func (mc *MetaContent) Json() (string, []byte) {
@@ -66,7 +62,7 @@ func (m *Meta) FetchMetaContent(bs *client.BlobStore) (*MetaContent, error) {
 	if err != nil {
 		return nil, err
 	}
-	mc := &MetaContent{}
+	mc := NewMetaContent()
 	if err := json.Unmarshal(blob, mc); err != nil {
 		return nil, err
 	}
