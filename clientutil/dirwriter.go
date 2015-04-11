@@ -58,7 +58,7 @@ func (up *Uploader) DirExplorer(path string, pnode *node, nodes chan<- *node) {
 		if err != nil {
 			panic(err)
 		}
-		if up.Ignorer.MatchesPath(relpath) {
+		if up.Ignorer != nil && up.Ignorer.MatchesPath(relpath) {
 			log.Printf("Uploader: %v excluded", relpath)
 			continue
 		}
