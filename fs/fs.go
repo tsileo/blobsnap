@@ -51,6 +51,7 @@ func (dt DirType) String() string {
 		return "Root"
 	case BasicDir:
 		return "BasicDir"
+
 	case HostRoot:
 		return "HostRoot"
 	case HostLatest:
@@ -242,17 +243,18 @@ func (d *Dir) readDir() (out []fuse.Dirent, ferr error) {
 	return
 }
 
-func (d *Dir) Lookup(ctx context.Context, name string) (fs fs.Node, err error) {
+func (d *Dir) Lookup(ctx context.Context, name string) (fs.Node, error) {
 	log.Printf("OP Lookup %v", name)
+	log.Printf("DEBUG %+v", d)
 	if len(d.Children) == 0 {
 		d.loadDir()
 	}
-	var ok bool
-	fs, ok = d.Children[name]
+	log.Printf("DEBUG %+v", d)
+	fs, ok := d.Children[name]
 	if ok {
-		return
+		return fs, nil
 	}
-	return
+	return nil, fuse.ENOENT
 }
 
 func (d *Dir) ReadDirAll(ctx context.Context) (out []fuse.Dirent, err error) {
