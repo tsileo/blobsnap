@@ -172,26 +172,6 @@ type Node struct {
 	fs      *FS
 }
 
-func (n *Node) Attr() fuse.Attr {
-	attr := fuse.Attr{
-		Mode: n.Mode,
-		Size: n.Size,
-	}
-	if n.ModTime != "" {
-		t, err := time.Parse(time.RFC3339, n.ModTime)
-		if err != nil {
-			panic(fmt.Errorf("error parsing mtime for %v: %v", n, err))
-		}
-		attr.Mtime = t
-	}
-	return attr
-}
-
-func (n *Node) Setattr(ctx context.Context, req *fuse.SetattrRequest, resp *fuse.SetattrResponse) error {
-	n.Mode = req.Mode
-	return nil
-}
-
 type Dir struct {
 	Node
 	Type     DirType
@@ -212,6 +192,18 @@ func NewDir(cfs *FS, dtype DirType, name string, ref string, modTime string, mod
 	d.Children = make(map[string]fs.Node)
 	d.Extra = extra
 	return
+}
+
+func (d *Dir) Attr(a *fuse.Attr) {
+	a.Inode = 1
+	a.Mode = d.Mode
+	if d.ModTime != "" {
+		t, err := time.Parse(time.RFC3339, d.ModTime)
+		if err != nil {
+			panic(fmt.Errorf("error parsing mtime for %v: %v", d, err))
+		}
+		a.Mtime = t
+	}
 }
 
 func (d *Dir) readDir() (out []fuse.Dirent, ferr error) {
@@ -368,18 +360,31 @@ func NewFile(fs *FS, name string, ref string, size int, modTime string, mode os.
 	return f
 }
 
-func (f *File) Attr() fuse.Attr {
-	return fuse.Attr{Inode: 2, Mode: 0444, Size: f.Size}
+func (f *File) Attr(a *fuse.Attr) {
+	a.Inode = 2
+	a.Mode = f.Mode
+	a.Size = f.Size
+	if f.ModTime != "" {
+		t, err := time.Parse(time.RFC3339, f.ModTime)
+		if err != nil {
+			panic(fmt.Errorf("error parsing mtime for %v: %v", f, err))
+		}
+		a.Mtime = t
+	}
+
 }
+
 func (f *File) Open(ctx context.Context, req *fuse.OpenRequest, res *fuse.OpenResponse) (fs.Handle, error) {
 	f.FakeFile = clientutil.NewFakeFile(f.fs.bs, f.Meta)
 	return f, nil
 }
+
 func (f *File) Release(ctx context.Context, req *fuse.ReleaseRequest) error {
 	f.FakeFile.Close()
 	f.FakeFile = nil
 	return nil
 }
+
 func (f *File) Read(ctx context.Context, req *fuse.ReadRequest, res *fuse.ReadResponse) error {
 	//log.Printf("Read %+v", f)
 	if req.Offset >= int64(f.Size) {
