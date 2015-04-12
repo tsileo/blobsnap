@@ -8,7 +8,6 @@ Implementation similar to https://github.com/cschwede/python-rabin-fingerprint
 package chunker
 
 type Chunker struct {
-	cache   [256]uint64
 	window  []uint64
 	pos     int
 	prevPos int
@@ -27,30 +26,35 @@ type Chunker struct {
 
 // Same window size as LBFS 48
 var windowSize = 64
+var prime = uint64(31)
+
+var cache [256]uint64
+
+func init() {
+	// calculates result = Prime ^ WindowSize first
+	result := uint64(1)
+	for i := 1; i < windowSize; i++ {
+		result *= prime
+	}
+	// caches the result for all 256 bytes
+	for i := uint64(0); i < 256; i++ {
+		cache[i] = i * result
+	}
+
+}
 
 // TODO build the cache in init
 
 func New() *Chunker {
-	chunker := &Chunker{
+	return &Chunker{
 		window:       make([]uint64, windowSize),
 		pos:          0,
 		prevPos:      windowSize - 1,
 		WindowSize:   uint64(windowSize),
-		Prime:        31,
 		ChunkMinSize: 256 * 1024,
 		ChunkAvgSize: 1024 * 1024,
 		ChunkMaxSize: 4 * 1024 * 1024,
 	}
-	// calculates result = Prime ^ WindowSize first
-	result := uint64(1)
-	for i := uint64(1); i < chunker.WindowSize; i++ {
-		result *= chunker.Prime
-	}
-	// caches the result for all 256 bytes
-	for i := uint64(0); i < 256; i++ {
-		chunker.cache[i] = i * result
-	}
-	return chunker
 }
 
 func (chunker *Chunker) Write(data []byte) (n int, err error) {
@@ -62,10 +66,10 @@ func (chunker *Chunker) Write(data []byte) (n int, err error) {
 
 func (chunker *Chunker) WriteByte(c byte) error {
 	ch := uint64(c)
-	chunker.Fingerprint *= chunker.Prime
+	chunker.Fingerprint *= prime
 	chunker.Fingerprint += ch
 	//fmt.Printf("chunker=%+v/%+v/%+v\n", chunker.pos, len(chunker.window), chunker.prevPos)
-	chunker.Fingerprint -= chunker.cache[chunker.window[chunker.prevPos]]
+	chunker.Fingerprint -= cache[chunker.window[chunker.prevPos]]
 
 	chunker.window[chunker.pos] = ch
 	chunker.prevPos = chunker.pos

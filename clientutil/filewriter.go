@@ -35,6 +35,7 @@ func (up *Uploader) FileWriter(key, path string, meta *Meta) (*WriteResult, erro
 	freader := io.TeeReader(f, fullHash)
 	eof := false
 	i := 0
+	// TODO don't read one byte at a time if meta.Size < chunker.ChunkMinSize
 	// Prepare the blob writer
 	var buf bytes.Buffer
 	blobHash := blake2b.New256()
@@ -101,15 +102,11 @@ func (up *Uploader) PutFile(path string) (*Meta, *WriteResult, error) {
 		return nil, nil, fmt.Errorf("failed to compute fulle hash %v: %v", path, err)
 	}
 	meta := NewMeta()
-	// First we check if the file isn't already uploaded,
-	// if so we skip it.
-
-	// TODO use vkv to check the file: full hash => mete content hash
-
-	//exists, err := up.bs.Stat(sha)
-	//if err != nil {
-	//	return nil, nil, fmt.Errorf("failed to stat %v: %v", sha, err)
-	//}
+	meta.Name = filename
+	meta.Size = int(fstat.Size())
+	meta.Type = "file"
+	meta.ModTime = fstat.ModTime().Format(time.RFC3339)
+	meta.Mode = uint32(fstat.Mode())
 	wr := NewWriteResult()
 	if fstat.Size() > 0 {
 		cwr, err := up.FileWriter(sha, path, meta)
@@ -119,12 +116,6 @@ func (up *Uploader) PutFile(path string) (*Meta, *WriteResult, error) {
 		wr.free()
 		wr = cwr
 	}
-	meta.Name = filename
-	meta.Size = int(fstat.Size())
-	meta.Type = "file"
-	meta.ModTime = fstat.ModTime().Format(time.RFC3339)
-	meta.Mode = uint32(fstat.Mode())
-	//meta.ComputeHash()
 	mhash, mjs := meta.Json()
 	mexists, err := up.bs.Stat(mhash)
 	if err != nil {
