@@ -9,7 +9,7 @@ package chunker
 
 type Chunker struct {
 	cache   [256]uint64
-	window  []byte
+	window  []uint64
 	pos     int
 	prevPos int
 
@@ -32,7 +32,7 @@ var windowSize = 64
 
 func New() *Chunker {
 	chunker := &Chunker{
-		window:       make([]byte, windowSize),
+		window:       make([]uint64, windowSize),
 		pos:          0,
 		prevPos:      windowSize - 1,
 		WindowSize:   uint64(windowSize),
@@ -61,13 +61,13 @@ func (chunker *Chunker) Write(data []byte) (n int, err error) {
 }
 
 func (chunker *Chunker) WriteByte(c byte) error {
-	ch := uint64(c) + 1 // add 1 to prevent long sequences of 0
+	ch := uint64(c)
 	chunker.Fingerprint *= chunker.Prime
 	chunker.Fingerprint += ch
 	//fmt.Printf("chunker=%+v/%+v/%+v\n", chunker.pos, len(chunker.window), chunker.prevPos)
 	chunker.Fingerprint -= chunker.cache[chunker.window[chunker.prevPos]]
 
-	chunker.window[chunker.pos] = c
+	chunker.window[chunker.pos] = ch
 	chunker.prevPos = chunker.pos
 	chunker.pos = (chunker.pos + 1) % int(chunker.WindowSize)
 	chunker.BlockSize++

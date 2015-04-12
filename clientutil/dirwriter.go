@@ -110,29 +110,11 @@ func (up *Uploader) DirWriterNode(node *node) {
 	up.StartDirUpload()
 	defer up.DirUploadDone()
 
+	node.meta = NewMeta()
 	sort.Strings(hashes)
-	mc := NewMetaContent()
 	for _, hash := range hashes {
-		mc.AddHash(hash)
+		node.meta.AddRef(hash)
 	}
-	mhash, mjs := mc.Json()
-	mexists, err := up.bs.Stat(mhash)
-	if err != nil {
-		node.err = err
-		return
-	}
-	if !mexists {
-		if err := up.bs.Put(mhash, mjs); err != nil {
-			node.err = err
-			return
-		}
-		node.wr.BlobsCount++
-		node.wr.BlobsUploaded++
-		node.wr.SizeUploaded += len(mjs)
-	} else {
-		node.wr.SizeSkipped += len(mjs)
-	}
-	node.wr.Hash = mhash
 	if node.skipped {
 		node.wr.DirsSkipped++
 	} else {
@@ -140,10 +122,8 @@ func (up *Uploader) DirWriterNode(node *node) {
 	}
 	node.wr.DirsCount++
 	// TODO WriteResult exisiting handling
-	node.meta = NewMeta()
 	node.meta.Name = filepath.Base(node.path)
 	node.meta.Type = "dir"
-	node.meta.Ref = mhash
 	node.meta.Size = node.wr.Size
 	node.meta.Mode = uint32(node.fi.Mode())
 	node.meta.ModTime = node.fi.ModTime().Format(time.RFC3339)

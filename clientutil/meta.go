@@ -9,72 +9,36 @@ import (
 	"github.com/tsileo/blobstash/client"
 )
 
-type MetaContent struct {
-	Data []interface{}
-}
-
-func NewMetaContent() *MetaContent {
-	return &MetaContent{
-		Data: []interface{}{},
-	}
-}
-
-func (mc *MetaContent) Add(index int, hash string) {
-	mc.Data = append(mc.Data, []interface{}{index, hash})
-}
-
-func (mc *MetaContent) Iter() []interface{} {
-	return mc.Data
-}
-
-func (mc *MetaContent) AddHash(hash string) {
-	mc.Data = append(mc.Data, hash)
-}
-
-func (mc *MetaContent) Json() (string, []byte) {
-	js, err := json.Marshal(mc.Data)
-	if err != nil {
-		panic(err)
-	}
-	h := fmt.Sprintf("%x", blake2b.Sum256(js))
-	return h, js
-}
-
 var metaPool = sync.Pool{
-	New: func() interface{} { return &Meta{} },
+	New: func() interface{} {
+		return &Meta{
+			Refs:    []interface{}{},
+			Version: "1",
+		}
+	},
 }
 
 type Meta struct {
-	Name    string `json:"name"`
-	Type    string `json:"type"`
-	Size    int    `json:"size"`
-	Mode    uint32 `json:"mode"`
-	ModTime string `json:"mtime"`
-	Ref     string `json:"ref"`
-	Hash    string `json:"-"`
+	Name    string        `json:"name"`
+	Type    string        `json:"type"`
+	Size    int           `json:"size"`
+	Mode    uint32        `json:"mode"`
+	ModTime string        `json:"mtime"`
+	Refs    []interface{} `json:"refs"`
+	Version string        `json:"version"`
+	Hash    string        `json:"-"`
 }
 
 func (m *Meta) free() {
+	m.Refs = m.Refs[:0]
 	m.Name = ""
 	m.Type = ""
 	m.Size = 0
 	m.Mode = 0
 	m.ModTime = ""
-	m.Ref = ""
 	m.Hash = ""
+	m.Versiom = "1"
 	metaPool.Put(m)
-}
-
-func (m *Meta) FetchMetaContent(bs *client.BlobStore) (*MetaContent, error) {
-	blob, err := bs.Get(m.Ref)
-	if err != nil {
-		return nil, err
-	}
-	mc := NewMetaContent()
-	if err := json.Unmarshal(blob, &mc.Data); err != nil {
-		return nil, err
-	}
-	return mc, nil
 }
 
 func (m *Meta) Json() (string, []byte) {
@@ -84,6 +48,14 @@ func (m *Meta) Json() (string, []byte) {
 	}
 	h := fmt.Sprintf("%x", blake2b.Sum256(js))
 	return h, js
+}
+
+func (m *Meta) AddIndexedRef(index int, hash string) {
+	mc.Refs = append(mc.Refs, []interface{}{index, hash})
+}
+
+func (m *Meta) AddRef(hash string) {
+	mc.Refs = append(mc.Refs, hash)
 }
 
 func NewMeta() *Meta {

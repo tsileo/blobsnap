@@ -73,11 +73,7 @@ func NewFakeFile(bs *client.BlobStore, meta *Meta) (f *FakeFile) {
 		lmrange: []*IndexValue{},
 	}
 	if meta.Size > 0 {
-		metacontent, err := meta.FetchMetaContent(bs)
-		if err != nil {
-			panic(err)
-		}
-		for _, m := range metacontent.Iter() {
+		for _, m := range meta.Refs {
 			data := m.([]interface{})
 			f.lmrange = append(f.lmrange, &IndexValue{Index: int(data[0].(float64)), Value: data[1].(string)})
 
