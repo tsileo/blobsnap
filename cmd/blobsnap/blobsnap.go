@@ -2,45 +2,36 @@ package main
 
 import (
 	"fmt"
-	"io/ioutil"
 	"os"
-	"path/filepath"
 	"runtime"
 
 	"github.com/codegangsta/cli"
 
-	"github.com/bitly/go-simplejson"
-
 	"github.com/tsileo/blobsnap/fs"
 	"github.com/tsileo/blobsnap/scheduler"
 	"github.com/tsileo/blobsnap/snapshot"
-
-	"github.com/tsileo/blobstash/config/pathutil"
 )
 
 var nCPU = runtime.NumCPU()
 
 func init() {
-	if nCPU < 2 {
-		nCPU = 2
-	}
 	runtime.GOMAXPROCS(nCPU)
 }
 
-func loadConf(config_path string) *simplejson.Json {
-	if config_path == "" {
-		config_path = filepath.Join(pathutil.ConfigDir(), "client-config.json")
-	}
-	dat, err := ioutil.ReadFile(config_path)
-	if err != nil {
-		panic(fmt.Errorf("failed to read config file: %v", err))
-	}
-	conf, err := simplejson.NewJson(dat)
-	if err != nil {
-		panic(fmt.Errorf("failed decode config file (invalid json): %v", err))
-	}
-	return conf
-}
+//func loadConf(config_path string) *simplejson.Json {
+//	if config_path == "" {
+//		config_path = filepath.Join(pathutil.ConfigDir(), "client-config.json")
+//	}
+//	dat, err := ioutil.ReadFile(config_path)
+//	if err != nil {
+//		panic(fmt.Errorf("failed to read config file: %v", err))
+//	}
+//	conf, err := simplejson.NewJson(dat)
+//	if err != nil {
+//		panic(fmt.Errorf("failed decode config file (invalid json): %v", err))
+//	}
+//	return conf
+//}
 
 func main() {
 	app := cli.NewApp()
@@ -87,7 +78,7 @@ func main() {
 				//defaultHost := loadConf(c.String("config")).Get("server").MustString("localhost:9735")
 				stop := make(chan bool, 1)
 				stopped := make(chan bool, 1)
-				fs.Mount("", c.Args().First(), stop, stopped)
+				fs.Mount("http://192.168.1.10:8050", c.Args().First(), stop, stopped)
 			},
 		},
 		{
