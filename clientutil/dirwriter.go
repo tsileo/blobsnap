@@ -127,9 +127,9 @@ func (up *Uploader) DirWriterNode(node *node) {
 	node.meta.Size = node.wr.Size
 	node.meta.Mode = uint32(node.fi.Mode())
 	node.meta.ModTime = node.fi.ModTime().Format(time.RFC3339)
-	mhash, mjs = node.meta.Json()
+	mhash, mjs := node.meta.Json()
 	node.meta.Hash = mhash
-	mexists, err = up.bs.Stat(mhash)
+	mexists, err := up.bs.Stat(mhash)
 	if err != nil {
 		node.err = err
 		return

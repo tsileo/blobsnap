@@ -37,7 +37,7 @@ func (m *Meta) free() {
 	m.Mode = 0
 	m.ModTime = ""
 	m.Hash = ""
-	m.Versiom = "1"
+	m.Version = "1"
 	metaPool.Put(m)
 }
 
@@ -51,11 +51,11 @@ func (m *Meta) Json() (string, []byte) {
 }
 
 func (m *Meta) AddIndexedRef(index int, hash string) {
-	mc.Refs = append(mc.Refs, []interface{}{index, hash})
+	m.Refs = append(m.Refs, []interface{}{index, hash})
 }
 
 func (m *Meta) AddRef(hash string) {
-	mc.Refs = append(mc.Refs, hash)
+	m.Refs = append(m.Refs, hash)
 }
 
 func NewMeta() *Meta {

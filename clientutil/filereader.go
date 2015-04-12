@@ -55,7 +55,6 @@ type IndexValue struct {
 type FakeFile struct {
 	bs      *client.BlobStore
 	meta    *Meta
-	ref     string
 	offset  int
 	size    int
 	llen    int
@@ -68,7 +67,6 @@ func NewFakeFile(bs *client.BlobStore, meta *Meta) (f *FakeFile) {
 	f = &FakeFile{
 		bs:      bs,
 		meta:    meta,
-		ref:     meta.Ref,
 		size:    meta.Size,
 		lmrange: []*IndexValue{},
 	}

@@ -11,7 +11,6 @@ import (
 	"github.com/dchest/blake2b"
 
 	"github.com/tsileo/blobsnap/chunker"
-	"github.com/tsileo/blobstash/client"
 )
 
 var (
@@ -21,8 +20,7 @@ var (
 
 // FileWriter reads the file byte and byte and upload it,
 // chunk by chunk, it also constructs the file index .
-func (up *Uploader) FileWriter(key, path string) (string, *WriteResult, error) {
-	metaContent := NewMetaContent()
+func (up *Uploader) FileWriter(key, path string, meta *Meta) (*WriteResult, error) {
 	writeResult := NewWriteResult()
 	// Init the rolling checksum
 	rs := chunker.New()
@@ -30,7 +28,7 @@ func (up *Uploader) FileWriter(key, path string) (string, *WriteResult, error) {
 	f, err := os.Open(path)
 	defer f.Close()
 	if err != nil {
-		return "", writeResult, fmt.Errorf("can't open file %v: %v", path, err)
+		return writeResult, fmt.Errorf("can't open file %v: %v", path, err)
 	}
 	// Prepare the reader to compute the hash on the fly
 	fullHash := blake2b.New256()
@@ -74,7 +72,7 @@ func (up *Uploader) FileWriter(key, path string) (string, *WriteResult, error) {
 			blobHash.Reset()
 			writeResult.BlobsCount++
 			// Save the location and the blob hash into a sorted list (with the offset as index)
-			metaContent.Add(writeResult.Size, nsha)
+			meta.AddIndexedRef(writeResult.Size, nsha)
 			//tx.Ladd(key, writeResult.Size, nsha)
 			rs.Reset()
 		}
@@ -83,18 +81,11 @@ func (up *Uploader) FileWriter(key, path string) (string, *WriteResult, error) {
 		}
 	}
 	writeResult.Hash = fmt.Sprintf("%x", fullHash.Sum(nil))
-	writeResult.FilesCount++
-	writeResult.FilesUploaded++
-	mhash, mjs := metaContent.Json()
-	if up.bs.Put(mhash, mjs); err != nil {
-		return "", nil, err
+	if writeResult.BlobsUploaded > 0 {
+		writeResult.FilesCount++
+		writeResult.FilesUploaded++
 	}
-	writeResult.BlobsCount++
-	writeResult.BlobsUploaded++
-	writeResult.Size += len(mjs)
-	writeResult.SizeUploaded += len(mjs)
-	// TODO where to store mhash ? vkv ?
-	return mhash, writeResult, nil
+	return writeResult, nil
 }
 
 func (up *Uploader) PutFile(path string) (*Meta, *WriteResult, error) {
@@ -109,6 +100,7 @@ func (up *Uploader) PutFile(path string) (*Meta, *WriteResult, error) {
 	if err != nil {
 		return nil, nil, fmt.Errorf("failed to compute fulle hash %v: %v", path, err)
 	}
+	meta := NewMeta()
 	// First we check if the file isn't already uploaded,
 	// if so we skip it.
 
@@ -118,42 +110,15 @@ func (up *Uploader) PutFile(path string) (*Meta, *WriteResult, error) {
 	//if err != nil {
 	//	return nil, nil, fmt.Errorf("failed to stat %v: %v", sha, err)
 	//}
-	metaRef := ""
-	kv, err := up.kvs.Get(fmt.Sprintf("blobsnap:map:%v", sha), -1)
-	exists := false
-	if err != nil {
-		if err != client.ErrKeyNotFound {
-			return nil, nil, fmt.Errorf("failed to query blobsnap:map : %v", err)
-		}
-	} else {
-		metaRef = kv.Value
-		exists = true
-	}
 	wr := NewWriteResult()
-	if exists || fstat.Size() == 0 {
-		wr.Hash = sha
-		wr.AlreadyExists = true
-		wr.FilesSkipped++
-		wr.FilesCount++
-		wr.SizeSkipped = int(fstat.Size())
-		wr.Size = wr.SizeSkipped
-		//	wr.BlobsCount += cnt
-		//		wr.BlobsSkipped += cnt
-	} else {
-		mref, cwr, err := up.FileWriter(sha, path)
+	if fstat.Size() > 0 {
+		cwr, err := up.FileWriter(sha, path, meta)
 		if err != nil {
 			return nil, nil, fmt.Errorf("FileWriter error: %v", err)
 		}
 		wr.free()
 		wr = cwr
-		metaRef = mref
-		_, err = up.kvs.Put(fmt.Sprintf("blobsnap:map:%v", sha), mref, -1)
-		if err != nil {
-			return nil, nil, fmt.Errorf("failed to update blobsnap:map : %v", err)
-		}
 	}
-	meta := NewMeta()
-	meta.Ref = metaRef
 	meta.Name = filename
 	meta.Size = int(fstat.Size())
 	meta.Type = "file"
