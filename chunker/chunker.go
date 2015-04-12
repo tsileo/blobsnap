@@ -28,6 +28,8 @@ type Chunker struct {
 // Same window size as LBFS 48
 var windowSize = 64
 
+// TODO build the cache in init
+
 func New() *Chunker {
 	chunker := &Chunker{
 		window:       make([]byte, windowSize),
@@ -49,6 +51,13 @@ func New() *Chunker {
 		chunker.cache[i] = i * result
 	}
 	return chunker
+}
+
+func (chunker *Chunker) Write(data []byte) (n int, err error) {
+	for _, c := range data {
+		chunker.WriteByte(c)
+	}
+	return len(data), nil
 }
 
 func (chunker *Chunker) WriteByte(c byte) error {

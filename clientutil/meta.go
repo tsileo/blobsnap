@@ -9,22 +9,30 @@ import (
 	"github.com/tsileo/blobstash/client"
 )
 
-type MetaContent []interface{}
-
-func NewMetaContent() MetaContent {
-	return MetaContent{}
+type MetaContent struct {
+	Data []interface{}
 }
 
-func (mc MetaContent) Add(index int, hash string) {
-	mc = append(mc, []interface{}{index, hash})
+func NewMetaContent() *MetaContent {
+	return &MetaContent{
+		Data: []interface{}{},
+	}
 }
 
-func (mc MetaContent) AddHash(hash string) {
-	mc = append(mc, hash)
+func (mc *MetaContent) Add(index int, hash string) {
+	mc.Data = append(mc.Data, []interface{}{index, hash})
 }
 
-func (mc MetaContent) Json() (string, []byte) {
-	js, err := json.Marshal(mc)
+func (mc *MetaContent) Iter() []interface{} {
+	return mc.Data
+}
+
+func (mc *MetaContent) AddHash(hash string) {
+	mc.Data = append(mc.Data, hash)
+}
+
+func (mc *MetaContent) Json() (string, []byte) {
+	js, err := json.Marshal(mc.Data)
 	if err != nil {
 		panic(err)
 	}
@@ -57,13 +65,13 @@ func (m *Meta) free() {
 	metaPool.Put(m)
 }
 
-func (m *Meta) FetchMetaContent(bs *client.BlobStore) (MetaContent, error) {
+func (m *Meta) FetchMetaContent(bs *client.BlobStore) (*MetaContent, error) {
 	blob, err := bs.Get(m.Ref)
 	if err != nil {
 		return nil, err
 	}
 	mc := NewMetaContent()
-	if err := json.Unmarshal(blob, mc); err != nil {
+	if err := json.Unmarshal(blob, &mc.Data); err != nil {
 		return nil, err
 	}
 	return mc, nil

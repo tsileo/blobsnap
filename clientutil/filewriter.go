@@ -10,7 +10,7 @@ import (
 
 	"github.com/dchest/blake2b"
 
-	"github.com/tsileo/blobsnap/rolling"
+	"github.com/tsileo/blobsnap/chunker"
 	"github.com/tsileo/blobstash/client"
 )
 
@@ -25,8 +25,7 @@ func (up *Uploader) FileWriter(key, path string) (string, *WriteResult, error) {
 	metaContent := NewMetaContent()
 	writeResult := NewWriteResult()
 	// Init the rolling checksum
-	window := 64
-	rs := rolling.New(window)
+	rs := chunker.New()
 	// Open the file
 	f, err := os.Open(path)
 	defer f.Close()
@@ -52,7 +51,8 @@ func (up *Uploader) FileWriter(key, path string) (string, *WriteResult, error) {
 			i++
 		}
 		onSplit := rs.OnSplit()
-		if (onSplit && (buf.Len() > MinBlobSize)) || buf.Len() >= MaxBlobSize || eof {
+		//if (onSplit && (buf.Len() > MinBlobSize)) || buf.Len() >= MaxBlobSize || eof {
+		if onSplit || eof {
 			nsha := fmt.Sprintf("%x", blobHash.Sum(nil))
 			// Check if the blob exists
 			exists, err := up.bs.Stat(nsha)
@@ -76,6 +76,7 @@ func (up *Uploader) FileWriter(key, path string) (string, *WriteResult, error) {
 			// Save the location and the blob hash into a sorted list (with the offset as index)
 			metaContent.Add(writeResult.Size, nsha)
 			//tx.Ladd(key, writeResult.Size, nsha)
+			rs.Reset()
 		}
 		if eof {
 			break

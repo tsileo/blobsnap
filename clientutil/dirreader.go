@@ -29,7 +29,7 @@ func GetDir(bs *client.BlobStore, key, path string) (rr *ReadResult, err error) 
 		if err != nil {
 			return nil, fmt.Errorf("failed to fetch meta content: %v", err)
 		}
-		for _, hash := range metacontent {
+		for _, hash := range metacontent.Iter() {
 			meta, err := NewMetaFromBlobStore(bs, hash.(string))
 			if err != nil {
 				return nil, fmt.Errorf("failed to fetch meta: %v", err)
