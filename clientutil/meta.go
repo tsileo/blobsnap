@@ -19,19 +19,21 @@ var metaPool = sync.Pool{
 }
 
 type Meta struct {
-	Name    string        `json:"name"`
-	Type    string        `json:"type"`
-	Size    int           `json:"size"`
-	Mode    uint32        `json:"mode"`
-	ModTime string        `json:"mtime"`
-	Refs    []interface{} `json:"refs"`
-	Version string        `json:"version"`
-	Hash    string        `json:"-"`
+	Name    string                 `json:"name"`
+	Type    string                 `json:"type"`
+	Size    int                    `json:"size"`
+	Mode    uint32                 `json:"mode"`
+	ModTime string                 `json:"mtime"`
+	Refs    []interface{}          `json:"refs"`
+	Version string                 `json:"version"`
+	Extra   map[string]interface{} `json:"extra,omitempty"`
+	Hash    string                 `json:"-"`
 }
 
 func (m *Meta) free() {
 	m.Refs = m.Refs[:0]
 	m.Name = ""
+	m.Extra = nil
 	m.Type = ""
 	m.Size = 0
 	m.Mode = 0
