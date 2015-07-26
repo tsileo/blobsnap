@@ -6,7 +6,7 @@ import (
 	"sync"
 
 	"github.com/dchest/blake2b"
-	"github.com/tsileo/blobstash/client"
+	"github.com/tsileo/blobstash/client/interface"
 )
 
 var metaPool = sync.Pool{
@@ -64,7 +64,7 @@ func NewMeta() *Meta {
 	return metaPool.Get().(*Meta)
 }
 
-func NewMetaFromBlobStore(bs *client.BlobStore, hash string) (*Meta, error) {
+func NewMetaFromBlobStore(bs client.BlobStorer, hash string) (*Meta, error) {
 	blob, err := bs.Get(hash)
 	if err != nil {
 		return nil, err

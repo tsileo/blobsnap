@@ -8,11 +8,11 @@ import (
 
 	"github.com/dchest/blake2b"
 
-	"github.com/tsileo/blobstash/client"
+	"github.com/tsileo/blobstash/client/interface"
 )
 
 // Download a file by its hash to path
-func GetFile(bs *client.BlobStore, key, path string) (*ReadResult, error) {
+func GetFile(bs client.BlobStorer, key, path string) (*ReadResult, error) {
 	readResult := &ReadResult{}
 	buf, err := os.Create(path)
 	defer buf.Close()
@@ -53,7 +53,8 @@ type IndexValue struct {
 // FakeFile implements io.Reader, and io.ReaderAt.
 // It fetch blobs on the fly.
 type FakeFile struct {
-	bs      *client.BlobStore
+	name    string
+	bs      client.BlobStorer
 	meta    *Meta
 	offset  int
 	size    int
@@ -62,7 +63,7 @@ type FakeFile struct {
 }
 
 // NewFakeFile creates a new FakeFile instance.
-func NewFakeFile(bs *client.BlobStore, meta *Meta) (f *FakeFile) {
+func NewFakeFile(bs client.BlobStorer, meta *Meta) (f *FakeFile) {
 	// Needed for the blob routing
 	f = &FakeFile{
 		bs:      bs,
