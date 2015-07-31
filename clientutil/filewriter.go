@@ -18,18 +18,10 @@ var (
 	MaxBlobSize = 1 << 20  // 1MB
 )
 
-// FileWriter reads the file byte and byte and upload it,
-// chunk by chunk, it also constructs the file index .
-func (up *Uploader) FileWriter(key, path string, meta *Meta) (*WriteResult, error) {
+func (up *Uploader) writeReader(f io.Reader, meta *Meta) (*WriteResult, error) {
 	writeResult := NewWriteResult()
 	// Init the rolling checksum
 	rs := chunker.New()
-	// Open the file
-	f, err := os.Open(path)
-	defer f.Close()
-	if err != nil {
-		return writeResult, fmt.Errorf("can't open file %v: %v", path, err)
-	}
 	// Prepare the reader to compute the hash on the fly
 	fullHash := blake2b.New256()
 	freader := io.TeeReader(f, fullHash)
@@ -97,10 +89,10 @@ func (up *Uploader) PutFile(path string) (*Meta, *WriteResult, error) {
 		return nil, nil, err
 	}
 	_, filename := filepath.Split(path)
-	sha, err := FullHash(path)
-	if err != nil {
-		return nil, nil, fmt.Errorf("failed to compute fulle hash %v: %v", path, err)
-	}
+	//sha, err := FullHash(path)
+	//if err != nil {
+	//	return nil, nil, fmt.Errorf("failed to compute fulle hash %v: %v", path, err)
+	//}
 	meta := NewMeta()
 	meta.Name = filename
 	meta.Size = int(fstat.Size())
@@ -109,13 +101,57 @@ func (up *Uploader) PutFile(path string) (*Meta, *WriteResult, error) {
 	meta.Mode = uint32(fstat.Mode())
 	wr := NewWriteResult()
 	if fstat.Size() > 0 {
-		cwr, err := up.FileWriter(sha, path, meta)
+		f, err := os.Open(path)
+		defer f.Close()
+		if err != nil {
+			return nil, nil, err
+		}
+		cwr, err := up.writeReader(f, meta)
 		if err != nil {
 			return nil, nil, fmt.Errorf("FileWriter error: %v", err)
 		}
 		wr.free()
 		wr = cwr
 	}
+	mhash, mjs := meta.Json()
+	mexists, err := up.bs.Stat(mhash)
+	if err != nil {
+		return nil, nil, fmt.Errorf("failed to stat blob %v: %v", mhash, err)
+	}
+	wr.Size += len(mjs)
+	if !mexists {
+		if err := up.bs.Put(mhash, mjs); err != nil {
+			return nil, nil, fmt.Errorf("failed to put blob %v: %v", mhash, err)
+		}
+		wr.BlobsCount++
+		wr.BlobsUploaded++
+		wr.SizeUploaded += len(mjs)
+	} else {
+		wr.SizeSkipped += len(mjs)
+	}
+	meta.Hash = mhash
+	return meta, wr, nil
+}
+
+// fmt.Sprintf("%x", blake2b.Sum256(js))
+func (up *Uploader) PutReader(name string, reader io.ReadCloser) (*Meta, *WriteResult, error) {
+	up.StartUpload()
+	defer up.UploadDone()
+
+	meta := NewMeta()
+	meta.Name = name
+	meta.Type = "file"
+	meta.ModTime = time.Now().Format(time.RFC3339)
+	// FIXME
+	//meta.Mode = uint32(fstat.Mode())
+	wr := NewWriteResult()
+	cwr, err := up.writeReader(reader, meta)
+	if err != nil {
+		return nil, nil, fmt.Errorf("FileWriter error: %v", err)
+	}
+	meta.Size = cwr.Size
+	wr.free()
+	wr = cwr
 	mhash, mjs := meta.Json()
 	mexists, err := up.bs.Stat(mhash)
 	if err != nil {
