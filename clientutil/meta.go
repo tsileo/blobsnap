@@ -3,6 +3,8 @@ package clientutil
 import (
 	"encoding/json"
 	"fmt"
+	"mime"
+	"path/filepath"
 	"sync"
 
 	"github.com/dchest/blake2b"
@@ -75,6 +77,13 @@ func NewMetaFromBlobStore(bs client.BlobStorer, hash string) (*Meta, error) {
 	}
 	meta.Hash = hash
 	return meta, err
+}
+
+func (m *Meta) ContentType() string {
+	if m.IsFile() {
+		return mime.TypeByExtension(filepath.Ext(m.Name))
+	}
+	return ""
 }
 
 // IsFile returns true if the Meta is a file.
