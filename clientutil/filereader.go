@@ -74,7 +74,16 @@ func NewFakeFile(bs client.BlobStorer, meta *Meta) (f *FakeFile) {
 	if meta.Size > 0 {
 		for _, m := range meta.Refs {
 			data := m.([]interface{})
-			f.lmrange = append(f.lmrange, &IndexValue{Index: int(data[0].(float64)), Value: data[1].(string)})
+			var index int
+			switch i := data[0].(type) {
+			case float64:
+				index = int(i)
+			case int:
+				index = i
+			default:
+				panic("unexpected index")
+			}
+			f.lmrange = append(f.lmrange, &IndexValue{Index: index, Value: data[1].(string)})
 
 		}
 	}
