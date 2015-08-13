@@ -2,8 +2,8 @@ package main
 
 import (
 	"fmt"
+	"log"
 	"os"
-	"runtime"
 
 	"github.com/codegangsta/cli"
 
@@ -12,26 +12,7 @@ import (
 	"github.com/tsileo/blobsnap/snapshot"
 )
 
-var nCPU = runtime.NumCPU()
-
-func init() {
-	runtime.GOMAXPROCS(nCPU)
-}
-
-//func loadConf(config_path string) *simplejson.Json {
-//	if config_path == "" {
-//		config_path = filepath.Join(pathutil.ConfigDir(), "client-config.json")
-//	}
-//	dat, err := ioutil.ReadFile(config_path)
-//	if err != nil {
-//		panic(fmt.Errorf("failed to read config file: %v", err))
-//	}
-//	conf, err := simplejson.NewJson(dat)
-//	if err != nil {
-//		panic(fmt.Errorf("failed decode config file (invalid json): %v", err))
-//	}
-//	return conf
-//}
+var version = "dev"
 
 func main() {
 	app := cli.NewApp()
@@ -39,46 +20,35 @@ func main() {
 		cli.StringFlag{"host", "", "override the real hostname"},
 		cli.StringFlag{"config", "", "config file"},
 	}
-
-	//ignoredFiles, _ := conf.Get("ignored-files").StringArray()
-
 	app.Name = "blobsnap"
 	app.Usage = "BlobSnap command-line tool"
-	app.Version = "0.1.0"
-	//  app.Action = func(c *cli.Context) {
-	//    println("Hello friend!")
-	//  }
+	app.Version = version
 	app.Commands = []cli.Command{
 		{
 			Name:  "put",
-			Usage: "put a file/directory",
+			Usage: "Upload a file/directory",
 			Flags: commonFlags,
 			Action: func(c *cli.Context) {
-				//defaultHost := loadConf(c.String("config")).Get("server").MustString("localhost:9735")
-				up, _ := snapshot.NewUploader("")
-				//if c.String("host") != "" {
-				// Override the hostname if needed
-				//	up.Client.Hostname = c.String("host")
-				//}
-				//cl.SetIgnoredFiles(ignoredFiles)
-				//defer up.Close()
+				up, err := snapshot.NewUploader(c.String("host"))
+				defer up.Close()
+				if err != nil {
+					log.Fatalf("failed to initialize uploader: %v", err)
+				}
 				meta, err := up.Put(c.Args().First())
 				if err != nil {
-					fmt.Printf("snapshot failed: %v", err)
+					log.Fatalf("snapshot failed: %v", err)
 				}
 				fmt.Printf("%v", meta.Hash)
-				//b, m, wr, err := cl.Put(&client.Ctx{Namespace: cl.Hostname, Archive: c.Bool("archive")}, c.Args().First())
-				//fmt.Printf("b:%+v,m:%+v,wr:%+v,err:%v\n", b, m, wr, err)
 			},
 		},
 		{
 			Name:  "mount",
 			Usage: "Mount the read-only filesystem to the given path",
+			Flags: commonFlags,
 			Action: func(c *cli.Context) {
-				//defaultHost := loadConf(c.String("config")).Get("server").MustString("localhost:9735")
 				stop := make(chan bool, 1)
 				stopped := make(chan bool, 1)
-				fs.Mount("http://192.168.1.10:8050", c.Args().First(), stop, stopped)
+				fs.Mount(c.String("host"), c.Args().First(), stop, stopped)
 			},
 		},
 		{
@@ -87,13 +57,7 @@ func main() {
 			Usage:     "Start the backup scheduler",
 			Flags:     commonFlags,
 			Action: func(c *cli.Context) {
-				//defaultHost := loadConf(c.String("config")).Get("server").MustString("localhost:9735")
-				up, _ := snapshot.NewUploader("")
-				//if c.String("host") != "" {
-				// Override the hostname if needed
-				//	up.Client.Hostname = c.String("host")
-				//	}
-				//cl.SetIgnoredFiles(ignoredFiles)
+				up, _ := snapshot.NewUploader(c.Args().First())
 				defer up.Close()
 				d := scheduler.New(up)
 				d.Run()
