@@ -6,6 +6,7 @@ import (
 	"io"
 	"os"
 
+	"github.com/Workiva/go-datastructures/trie/yfast"
 	"github.com/dchest/blake2b"
 
 	"github.com/tsileo/blobstash/client/interface"
@@ -50,6 +51,11 @@ type IndexValue struct {
 	Value string
 }
 
+// Key is needed for yfast
+func (iv *IndexValue) Key() uint64 {
+	return uint64(iv.Index)
+}
+
 // FakeFile implements io.Reader, and io.ReaderAt.
 // It fetch blobs on the fly.
 type FakeFile struct {
@@ -60,6 +66,7 @@ type FakeFile struct {
 	size    int
 	llen    int
 	lmrange []*IndexValue
+	trie    *yfast.YFastTrie
 }
 
 // NewFakeFile creates a new FakeFile instance.
@@ -70,6 +77,7 @@ func NewFakeFile(bs client.BlobStorer, meta *Meta) (f *FakeFile) {
 		meta:    meta,
 		size:    meta.Size,
 		lmrange: []*IndexValue{},
+		trie:    yfast.New(uint64(0)),
 	}
 	if meta.Size > 0 {
 		for _, m := range meta.Refs {
@@ -83,8 +91,9 @@ func NewFakeFile(bs client.BlobStorer, meta *Meta) (f *FakeFile) {
 			default:
 				panic("unexpected index")
 			}
-			f.lmrange = append(f.lmrange, &IndexValue{Index: index, Value: data[1].(string)})
-
+			iv := &IndexValue{Index: index, Value: data[1].(string)}
+			f.lmrange = append(f.lmrange, iv)
+			f.trie.Insert(iv)
 		}
 	}
 	return
@@ -108,6 +117,79 @@ func (f *FakeFile) ReadAt(p []byte, offset int64) (n int, err error) {
 	}
 	n = copy(p, buf)
 	return
+}
+
+// Low level read function, read a size from an offset
+// Iterate only the needed blobs
+func (f *FakeFile) read2(offset, cnt int) ([]byte, error) {
+	//log.Printf("FakeFile %v read(%v, %v)", f.ref, offset, cnt)
+	if cnt < 0 || cnt > f.size {
+		cnt = f.size
+	}
+	var buf bytes.Buffer
+	var err error
+	written := 0
+
+	if len(f.lmrange) == 0 {
+		panic(fmt.Errorf("FakeFile %+v lmrange empty", f))
+	}
+	// TODO handle case if offset=0 qnd cnt<=size
+	for {
+		iv := f.trie.Predecessor(uint64(offset)).(*IndexValue)
+
+	}
+
+	for _, iv := range f.lmrange {
+		if offset > iv.Index {
+			continue
+		}
+		//bbuf, _, _ := f.client.Blobs.Get(iv.Value)
+		bbuf, err := f.bs.Get(iv.Value)
+		if err != nil {
+			return nil, fmt.Errorf("failed to fetch blob %v: %v", iv.Value, err)
+		}
+		foffset := 0
+		if offset != 0 {
+			// Compute the starting offset of the blob
+			blobStart := iv.Index - len(bbuf)
+			// and subtract it to get the correct offset
+			foffset = offset - blobStart
+			offset = 0
+		}
+		// If the remaining cnt (cnt - written)
+		// is greater than the blob slice
+		if cnt-written > len(bbuf)-foffset {
+			fwritten, err := buf.Write(bbuf[foffset:])
+			if err != nil {
+				return nil, err
+			}
+			written += fwritten
+
+		} else {
+			// What we need fit in this blob
+			// it should return after this
+			if foffset+cnt-written > len(bbuf) {
+				panic(fmt.Errorf("failed to read from FakeFile %+v [%v:%v]", f, foffset, foffset+cnt-written))
+			}
+			fwritten, err := buf.Write(bbuf[foffset : foffset+cnt-written])
+			if err != nil {
+				return nil, err
+			}
+
+			written += fwritten
+			// Check that the total written bytes equals the requested size
+			if written != cnt {
+				panic("error reading FakeFile")
+			}
+		}
+		if written == cnt {
+			return buf.Bytes(), nil
+		}
+	}
+	if err != nil {
+		return nil, err
+	}
+	return buf.Bytes(), err
 }
 
 // Low level read function, read a size from an offset
