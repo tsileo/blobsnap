@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"fmt"
 	"io"
-	"log"
 	"os"
 
 	"github.com/Workiva/go-datastructures/trie/yfast"
@@ -102,11 +101,9 @@ func NewFakeFile(bs client.BlobStorer, meta *Meta) (f *FakeFile) {
 			}
 			iv := &IndexValue{Index: index, Value: data[1].(string), I: idx}
 			f.lmrange = append(f.lmrange, iv)
-			log.Printf("trie inset %+v", iv)
 			f.trie.Insert(iv)
 		}
 	}
-	log.Printf("Size: %v\n%+v", meta.Size, f)
 	return
 }
 
@@ -229,7 +226,6 @@ func (f *FakeFile) Read(p []byte) (n int, err error) {
 	if limit > (f.size - f.offset) {
 		limit = f.size - f.offset
 	}
-	log.Printf("Read calling read offset=%v limit=%v", f.offset, limit)
 	b, err := f.read(f.offset, limit)
 	if err == io.EOF {
 		return 0, io.EOF
