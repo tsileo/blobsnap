@@ -6,7 +6,9 @@ import (
 	"io"
 	"os"
 
+	"github.com/Workiva/go-datastructures/trie/yfast"
 	"github.com/dchest/blake2b"
+	"github.com/hashicorp/golang-lru"
 
 	"github.com/tsileo/blobstash/client/interface"
 )
@@ -48,6 +50,12 @@ func GetFile(bs client.BlobStorer, key, path string) (*ReadResult, error) {
 type IndexValue struct {
 	Index int
 	Value string
+	I     int
+}
+
+// Key is needed for yfast
+func (iv *IndexValue) Key() uint64 {
+	return uint64(iv.Index)
 }
 
 // FakeFile implements io.Reader, and io.ReaderAt.
@@ -60,19 +68,27 @@ type FakeFile struct {
 	size    int
 	llen    int
 	lmrange []*IndexValue
+	trie    *yfast.YFastTrie
+	lru     *lru.Cache
 }
 
 // NewFakeFile creates a new FakeFile instance.
 func NewFakeFile(bs client.BlobStorer, meta *Meta) (f *FakeFile) {
 	// Needed for the blob routing
+	cache, err := lru.New(16)
+	if err != nil {
+		panic(err)
+	}
 	f = &FakeFile{
 		bs:      bs,
 		meta:    meta,
 		size:    meta.Size,
 		lmrange: []*IndexValue{},
+		trie:    yfast.New(uint64(0)),
+		lru:     cache,
 	}
 	if meta.Size > 0 {
-		for _, m := range meta.Refs {
+		for idx, m := range meta.Refs {
 			data := m.([]interface{})
 			var index int
 			switch i := data[0].(type) {
@@ -83,8 +99,9 @@ func NewFakeFile(bs client.BlobStorer, meta *Meta) (f *FakeFile) {
 			default:
 				panic("unexpected index")
 			}
-			f.lmrange = append(f.lmrange, &IndexValue{Index: index, Value: data[1].(string)})
-
+			iv := &IndexValue{Index: index, Value: data[1].(string), I: idx}
+			f.lmrange = append(f.lmrange, iv)
+			f.trie.Insert(iv)
 		}
 	}
 	return
@@ -118,6 +135,7 @@ func (f *FakeFile) read(offset, cnt int) ([]byte, error) {
 		cnt = f.size
 	}
 	var buf bytes.Buffer
+	var cbuf []byte
 	var err error
 	written := 0
 
@@ -125,15 +143,26 @@ func (f *FakeFile) read(offset, cnt int) ([]byte, error) {
 		panic(fmt.Errorf("FakeFile %+v lmrange empty", f))
 	}
 
-	for _, iv := range f.lmrange {
+	tiv := f.trie.Successor(uint64(offset)).(*IndexValue)
+	if tiv.Index == offset {
+		tiv = f.trie.Successor(uint64(offset + 1)).(*IndexValue)
+	}
+	for _, iv := range f.lmrange[tiv.I:] {
 		if offset > iv.Index {
 			continue
 		}
 		//bbuf, _, _ := f.client.Blobs.Get(iv.Value)
-		bbuf, err := f.bs.Get(iv.Value)
-		if err != nil {
-			return nil, fmt.Errorf("failed to fetch blob %v: %v", iv.Value, err)
+		if cached, ok := f.lru.Get(iv.Value); ok {
+			cbuf = cached.([]byte)
+		} else {
+			bbuf, err := f.bs.Get(iv.Value)
+			if err != nil {
+				return nil, fmt.Errorf("failed to fetch blob %v: %v", iv.Value, err)
+			}
+			f.lru.Add(iv.Value, bbuf)
+			cbuf = bbuf
 		}
+		bbuf := cbuf
 		foffset := 0
 		if offset != 0 {
 			// Compute the starting offset of the blob
@@ -171,6 +200,7 @@ func (f *FakeFile) read(offset, cnt int) ([]byte, error) {
 		if written == cnt {
 			return buf.Bytes(), nil
 		}
+		cbuf = nil
 	}
 	if err != nil {
 		return nil, err
