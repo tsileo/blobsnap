@@ -9,6 +9,7 @@ import (
 
 	"github.com/Workiva/go-datastructures/trie/yfast"
 	"github.com/dchest/blake2b"
+	"github.com/hashicorp/golang-lru"
 
 	"github.com/tsileo/blobstash/client/interface"
 )
@@ -69,17 +70,23 @@ type FakeFile struct {
 	llen    int
 	lmrange []*IndexValue
 	trie    *yfast.YFastTrie
+	lru     *lru.Cache
 }
 
 // NewFakeFile creates a new FakeFile instance.
 func NewFakeFile(bs client.BlobStorer, meta *Meta) (f *FakeFile) {
 	// Needed for the blob routing
+	cache, err := lru.New(16)
+	if err != nil {
+		panic(err)
+	}
 	f = &FakeFile{
 		bs:      bs,
 		meta:    meta,
 		size:    meta.Size,
 		lmrange: []*IndexValue{},
 		trie:    yfast.New(uint64(0)),
+		lru:     cache,
 	}
 	if meta.Size > 0 {
 		for idx, m := range meta.Refs {
@@ -131,6 +138,7 @@ func (f *FakeFile) read(offset, cnt int) ([]byte, error) {
 		cnt = f.size
 	}
 	var buf bytes.Buffer
+	var cbuf []byte
 	var err error
 	written := 0
 
@@ -147,10 +155,17 @@ func (f *FakeFile) read(offset, cnt int) ([]byte, error) {
 			continue
 		}
 		//bbuf, _, _ := f.client.Blobs.Get(iv.Value)
-		bbuf, err := f.bs.Get(iv.Value)
-		if err != nil {
-			return nil, fmt.Errorf("failed to fetch blob %v: %v", iv.Value, err)
+		if cached, ok := f.lru.Get(iv.Value); ok {
+			cbuf = cached.([]byte)
+		} else {
+			bbuf, err := f.bs.Get(iv.Value)
+			if err != nil {
+				return nil, fmt.Errorf("failed to fetch blob %v: %v", iv.Value, err)
+			}
+			f.lru.Add(iv.Value, bbuf)
+			cbuf = bbuf
 		}
+		bbuf := cbuf
 		foffset := 0
 		if offset != 0 {
 			// Compute the starting offset of the blob
@@ -188,6 +203,7 @@ func (f *FakeFile) read(offset, cnt int) ([]byte, error) {
 		if written == cnt {
 			return buf.Bytes(), nil
 		}
+		cbuf = nil
 	}
 	if err != nil {
 		return nil, err
