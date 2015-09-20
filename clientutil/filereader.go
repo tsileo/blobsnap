@@ -75,7 +75,7 @@ type FakeFile struct {
 // NewFakeFile creates a new FakeFile instance.
 func NewFakeFile(bs client.BlobStorer, meta *Meta) (f *FakeFile) {
 	// Needed for the blob routing
-	cache, err := lru.New(16)
+	cache, err := lru.New(2)
 	if err != nil {
 		panic(err)
 	}

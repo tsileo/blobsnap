@@ -17,7 +17,7 @@ Draws inspiration from [Camlistore](camlistore.org) and [bup](https://github.com
 
 ### Fuse file system
 
-**BlobFS** is the most convenient way to restore/navigate snapshots is the FUSE file system.
+The (read-only) Fuse file system is the most convenient way to restore/navigate snapshots.
 
 There is two magic directories at the root:
 
