@@ -25,7 +25,7 @@ There is two magic directories at the root:
 - **snapshots**: it let you navigate for every snapshots, you can see every versions.
 
 ```console
-$ blobstash mount /backups
+$ blobsnap mount /backups
 2014/05/12 17:26:34 Mounting read-only filesystem on /backups
 Ctrl+C to unmount.
 ```
