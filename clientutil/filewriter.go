@@ -142,8 +142,7 @@ func (up *Uploader) PutReader(name string, reader io.ReadCloser) (*Meta, *WriteR
 	meta.Name = name
 	meta.Type = "file"
 	meta.ModTime = time.Now().Format(time.RFC3339)
-	// FIXME
-	//meta.Mode = uint32(fstat.Mode())
+	meta.Mode = uint32(0666)
 	wr := NewWriteResult()
 	cwr, err := up.writeReader(reader, meta)
 	if err != nil {
