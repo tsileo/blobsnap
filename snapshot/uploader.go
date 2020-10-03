@@ -8,21 +8,18 @@ import (
 	"path/filepath"
 	"time"
 
+	"github.com/antonovvk/blobsnap/clientutil"
+	"github.com/antonovvk/blobsnap/store"
 	"github.com/dchest/blake2b"
-	"github.com/tsileo/blobsnap/clientutil"
-	"github.com/tsileo/blobstash/client"
 )
 
 type Uploader struct {
-	bs       *client.BlobStore
-	kvs      *client.KvStore
+	bs       store.BlobStore
+	kvs      store.KvStore
 	Uploader *clientutil.Uploader
 }
 
-func NewUploader(serverAddr string) (*Uploader, error) {
-	bs := client.NewBlobStore(serverAddr)
-	bs.ProcessBlobs()
-	kvs := client.NewKvStore(serverAddr)
+func NewUploader(bs store.BlobStore, kvs store.KvStore) (*Uploader, error) {
 	return &Uploader{
 		bs:       bs,
 		kvs:      kvs,
@@ -31,7 +28,6 @@ func NewUploader(serverAddr string) (*Uploader, error) {
 }
 
 func (up *Uploader) Close() error {
-	up.bs.WaitBlobs()
 	return nil
 }
 
@@ -52,7 +48,7 @@ func (s *Snapshot) ComputeSnapSetKey() string {
 	return fmt.Sprintf("%x", hash.Sum(nil))
 }
 
-func (s *Snapshot) FetchMeta(bs *client.BlobStore) (*clientutil.Meta, error) {
+func (s *Snapshot) FetchMeta(bs store.BlobStore) (*clientutil.Meta, error) {
 	blob, err := bs.Get(s.Ref)
 	if err != nil {
 		return nil, err
@@ -100,7 +96,7 @@ func (up *Uploader) Put(path string) (*clientutil.Meta, error) {
 	if err != nil {
 		return nil, err
 	}
-	_, err = up.kvs.Put(fmt.Sprintf("blobsnap:snapset:%v", snap.SnapSetKey), string(snapjs), int(t.UnixNano()))
+	err = up.kvs.Put(fmt.Sprintf("blobsnap:snapset:%v", snap.SnapSetKey), string(snapjs), t.UnixNano())
 	if err != nil {
 		return nil, err
 	}

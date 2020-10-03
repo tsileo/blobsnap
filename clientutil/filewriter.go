@@ -10,7 +10,7 @@ import (
 
 	"github.com/dchest/blake2b"
 
-	"github.com/tsileo/blobsnap/chunker"
+	"github.com/antonovvk/blobsnap/chunker"
 )
 
 var (

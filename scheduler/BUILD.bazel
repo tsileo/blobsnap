@@ -1,0 +1,16 @@
+load("@io_bazel_rules_go//go:def.bzl", "go_library")
+
+go_library(
+    name = "go_default_library",
+    srcs = [
+        "config.go",
+        "scheduler.go",
+    ],
+    importpath = "github.com/antonovvk/blobsnap/scheduler",
+    visibility = ["//visibility:public"],
+    deps = [
+        "//snapshot:go_default_library",
+        "//store:go_default_library",
+        "@com_github_robfig_cron//:go_default_library",
+    ],
+)

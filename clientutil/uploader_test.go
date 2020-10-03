@@ -5,8 +5,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/tsileo/blobstash/client"
-	"github.com/tsileo/blobstash/test"
+	"github.com/antonovvk/blobsnap/store"
 )
 
 func check(err error) {
@@ -16,10 +15,10 @@ func check(err error) {
 }
 
 func TestUploader(t *testing.T) {
-	bs := client.NewBlobStore("")
+	bs := store.NewBlobStore("")
 	// setup the blobstore pipeline for async upload
 	bs.ProcessBlobs()
-	kvs := client.NewKvStore("")
+	kvs := store.NewKvStore("")
 	up := NewUploader(bs, kvs)
 
 	t.Logf("Testing with a random file...")

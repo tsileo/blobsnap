@@ -1,0 +1,23 @@
+load("@io_bazel_rules_go//go:def.bzl", "go_library", "go_test")
+
+go_library(
+    name = "go_default_library",
+    srcs = ["fs.go"],
+    importpath = "github.com/antonovvk/blobsnap/fs",
+    visibility = ["//visibility:public"],
+    deps = [
+        "//clientutil:go_default_library",
+        "//snapshot:go_default_library",
+        "//store:go_default_library",
+        "@com_github_jinzhu_now//:go_default_library",
+        "@org_bazil_fuse//:go_default_library",
+        "@org_bazil_fuse//fs:go_default_library",
+    ],
+)
+
+go_test(
+    name = "go_default_test",
+    srcs = ["fs_test.go"],
+    embed = [":go_default_library"],
+    deps = ["//snapshot:go_default_library"],
+)

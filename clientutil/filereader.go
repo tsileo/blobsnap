@@ -10,11 +10,11 @@ import (
 	"github.com/dchest/blake2b"
 	"github.com/hashicorp/golang-lru"
 
-	"github.com/tsileo/blobstash/client/interface"
+	"github.com/antonovvk/blobsnap/store"
 )
 
 // Download a file by its hash to path
-func GetFile(bs client.BlobStorer, key, path string) (*ReadResult, error) {
+func GetFile(bs store.BlobStore, key, path string) (*ReadResult, error) {
 	readResult := &ReadResult{}
 	buf, err := os.Create(path)
 	defer buf.Close()
@@ -62,7 +62,7 @@ func (iv *IndexValue) Key() uint64 {
 // It fetch blobs on the fly.
 type FakeFile struct {
 	name    string
-	bs      client.BlobStorer
+	bs      store.BlobStore
 	meta    *Meta
 	offset  int
 	size    int
@@ -73,7 +73,7 @@ type FakeFile struct {
 }
 
 // NewFakeFile creates a new FakeFile instance.
-func NewFakeFile(bs client.BlobStorer, meta *Meta) (f *FakeFile) {
+func NewFakeFile(bs store.BlobStore, meta *Meta) (f *FakeFile) {
 	// Needed for the blob routing
 	cache, err := lru.New(2)
 	if err != nil {
@@ -151,7 +151,6 @@ func (f *FakeFile) read(offset, cnt int) ([]byte, error) {
 		if offset > iv.Index {
 			continue
 		}
-		//bbuf, _, _ := f.client.Blobs.Get(iv.Value)
 		if cached, ok := f.lru.Get(iv.Value); ok {
 			cbuf = cached.([]byte)
 		} else {

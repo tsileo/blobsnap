@@ -2,7 +2,7 @@ package clientutil
 
 import (
 	gignore "github.com/sabhiram/go-git-ignore"
-	"github.com/tsileo/blobstash/client/interface"
+	"github.com/antonovvk/blobsnap/store"
 )
 
 var (
@@ -11,8 +11,8 @@ var (
 )
 
 type Uploader struct {
-	bs  client.BlobStorer
-	kvs client.KvStorer
+	bs  store.BlobStore
+	kvs store.KvStore
 
 	uploader    chan struct{}
 	dirUploader chan struct{}
@@ -21,7 +21,7 @@ type Uploader struct {
 	Root    string
 }
 
-func NewUploader(bs client.BlobStorer, kvs client.KvStorer) *Uploader {
+func NewUploader(bs store.BlobStore, kvs store.KvStore) *Uploader {
 	return &Uploader{
 		bs:          bs,
 		kvs:         kvs,

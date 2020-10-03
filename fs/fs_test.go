@@ -9,9 +9,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/tsileo/blobstash/test"
-
-	"github.com/tsileo/blobsnap/snapshot"
+	"github.com/antonovvk/blobsnap/snapshot"
 )
 
 func check(e error) {

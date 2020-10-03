@@ -1,5 +1,11 @@
-cmd/blobsnap
-*.json
-.*
-*-db
+bazel-*
+*.pb.go
+.idea/*
+.sync/*
+.DS_Store
+**/*.pyc
+*~
+**/node_modules/**
+.secrets
 
+\.sync/

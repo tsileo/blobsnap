@@ -7,11 +7,11 @@ import (
 
 	"github.com/dchest/blake2b"
 
-	"github.com/tsileo/blobstash/client"
+	"github.com/antonovvk/blobsnap/store"
 )
 
 // GetDir restore the directory to path
-func GetDir(bs *client.BlobStore, key, path string) (rr *ReadResult, err error) {
+func GetDir(bs store.BlobStore, key, path string) (rr *ReadResult, err error) {
 	fullHash := blake2b.New256()
 	rr = &ReadResult{}
 	err = os.Mkdir(path, 0700)

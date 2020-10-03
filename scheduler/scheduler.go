@@ -15,7 +15,7 @@ but the next schedule will follow the spec).
 Links
 
 	[1]: https://github.com/robfig/cron
-	[2]: https://github.com/cznic/kv
+	[2]: KV
 	[3]: http://anacron.sourceforge.net/
 
 */
@@ -31,26 +31,25 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/cznic/kv"
+	"github.com/antonovvk/blobsnap/snapshot"
+	"github.com/antonovvk/blobsnap/store"
 	"github.com/robfig/cron"
-
-	"github.com/tsileo/blobsnap/snapshot"
 )
 
 type Job struct {
-	uploader *snapshot.Uploader
+	uploader        *snapshot.Uploader
 	schedulerConfig *Config
-	config       *ConfigEntry
-	sched        cron.Schedule
-	Prev         time.Time
-	Next         time.Time
+	config          *ConfigEntry
+	sched           cron.Schedule
+	Prev            time.Time
+	Next            time.Time
 }
 
 // NewJob initialize a Job
 func NewJob(conf *ConfigEntry, sched cron.Schedule) *Job {
 	return &Job{
 		config: conf,
-		sched: sched,
+		sched:  sched,
 	}
 }
 
@@ -140,30 +139,31 @@ func ScanJob(job *Job, s string) (err error) {
 	return
 }
 
-func opts() *kv.Options {
-	return &kv.Options{
-		VerifyDbBeforeOpen:  true,
-		VerifyDbAfterOpen:   true,
-		VerifyDbBeforeClose: true,
-		VerifyDbAfterClose:  true,
-	}
-}
+//~ func opts() *kv.Options {
+//~ return &kv.Options{
+//~ VerifyDbBeforeOpen:  true,
+//~ VerifyDbAfterOpen:   true,
+//~ VerifyDbBeforeClose: true,
+//~ VerifyDbAfterClose:  true,
+//~ }
+//~ }
 
 // New initialize a new KV database.
-func NewDB(path string) (*kv.DB, error) {
-	createOpen := kv.Open
-	if _, err := os.Stat(path); os.IsNotExist(err) {
-		createOpen = kv.Create
-	}
-	return createOpen(path, opts())
+func NewDB(path string) (store.KvStore, error) {
+	//~ createOpen := kv.Open
+	//~ if _, err := os.Stat(path); os.IsNotExist(err) {
+	//~ createOpen = kv.Create
+	//~ }
+	//~ return createOpen(path, opts())
+	return nil, fmt.Errorf("Not implemented")
 }
 
 type Scheduler struct {
-	uploader  *snapshot.Uploader
-	stop    chan struct{}
-	running bool
-	jobs    []*Job
-	db      *kv.DB
+	uploader *snapshot.Uploader
+	stop     chan struct{}
+	running  bool
+	jobs     []*Job
+	db       store.KvStore
 	sync.Mutex
 }
 
@@ -191,9 +191,9 @@ func New(uploader *snapshot.Uploader) *Scheduler {
 	}
 	return &Scheduler{
 		uploader: uploader,
-		stop: make(chan struct{}),
-		jobs: []*Job{},
-		db: db,
+		stop:     make(chan struct{}),
+		jobs:     []*Job{},
+		db:       db,
 	}
 }
 
@@ -205,7 +205,7 @@ func (d *Scheduler) Stop() {
 // Run start the processing of jobs, and listen for config update.
 func (d *Scheduler) Run() {
 	log.Println("Running...")
-	defer d.db.Close()
+	//~ defer d.db.Close()
 	cs := make(chan os.Signal, 1)
 	signal.Notify(cs, os.Interrupt,
 		syscall.SIGHUP,
@@ -237,7 +237,7 @@ func (d *Scheduler) Run() {
 				go job.Run()
 				job.Prev = job.Next
 				job.ComputeNext(now)
-				if err := d.db.Set([]byte(job.Key()), []byte(job.Value())); err != nil {
+				if err := d.db.Put(job.Key(), job.Value(), 0); err != nil {
 					panic(err)
 				}
 				d.Unlock()
@@ -251,7 +251,7 @@ func (d *Scheduler) Run() {
 			d.updateJobs()
 		case sig := <-cs:
 			log.Printf("captured %v\n", sig)
-			d.db.Close()
+			//~ d.db.Close()
 			os.Exit(1)
 		}
 	}
@@ -264,15 +264,16 @@ func (d *Scheduler) updateJobs() error {
 	conf := GetConfig()
 	d.jobs = []*Job{}
 	for _, snap := range conf.Snapshots {
-		spec, err := cron.Parse(snap.Spec)
+		spec, err := cron.Parser{}.Parse(snap.Spec)
 		if err != nil {
 			log.Printf("Bad spec %v: %v\naborting updateJobs", snap.Spec, err)
 			return err
 		}
 		job := NewJob(&snap, spec)
 		job.uploader = d.uploader
-		res, err := d.db.Get(nil, []byte(job.Key()))
-		if res == nil {
+		//~ res, err := d.db.Get(job.Key())
+		res := ""
+		if res == "" {
 			prev := time.Now().UTC()
 			if !job.Prev.IsZero() {
 				prev = job.Prev
@@ -285,7 +286,7 @@ func (d *Scheduler) updateJobs() error {
 			}
 			job.ComputeNext(job.Prev)
 		}
-		if err := d.db.Set([]byte(job.Key()), []byte(job.Value())); err != nil {
+		if err := d.db.Put(job.Key(), job.Value(), 0); err != nil {
 			return err
 		}
 		d.jobs = append(d.jobs, job)

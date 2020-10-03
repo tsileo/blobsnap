@@ -13,6 +13,7 @@ the file/dir (e.g /datadb/mnt/snapshots/writing/2014-05-04T17:42:48+02:00/writin
 package fs
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -24,13 +25,11 @@ import (
 
 	"bazil.org/fuse"
 	"bazil.org/fuse/fs"
-
 	"github.com/jinzhu/now"
-	"golang.org/x/net/context"
 
-	"github.com/tsileo/blobsnap/clientutil"
-	"github.com/tsileo/blobsnap/snapshot"
-	"github.com/tsileo/blobstash/client"
+	"github.com/antonovvk/blobsnap/clientutil"
+	"github.com/antonovvk/blobsnap/snapshot"
+	"github.com/antonovvk/blobsnap/store"
 )
 
 type DirType int
@@ -51,7 +50,6 @@ func (dt DirType) String() string {
 		return "Root"
 	case BasicDir:
 		return "BasicDir"
-
 	case HostRoot:
 		return "HostRoot"
 	case HostLatest:
@@ -67,7 +65,7 @@ func (dt DirType) String() string {
 }
 
 // Mount the filesystem to the given mountpoint
-func Mount(server string, mountpoint string, stop <-chan bool, stopped chan<- bool) {
+func Mount(bs store.BlobStore, kvs store.KvStore, mountpoint string, stop <-chan bool, stopped chan<- bool) {
 	c, err := fuse.Mount(mountpoint)
 	if err != nil {
 		log.Fatal(err)
@@ -95,7 +93,7 @@ func Mount(server string, mountpoint string, stop <-chan bool, stopped chan<- bo
 		}
 	}()
 
-	err = fs.Serve(c, NewFS(server))
+	err = fs.Serve(c, NewFS(bs, kvs))
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -111,16 +109,14 @@ type FS struct {
 	SnapSets map[string][]*snapshot.Snapshot
 
 	RootDir *Dir
-	bs      *client.BlobStore
-	kvs     *client.KvStore
+	bs      store.BlobStore
+	kvs     store.KvStore
 }
 
 // NewFS initialize a new file system.
-func NewFS(server string) (fs *FS) {
+func NewFS(bs store.BlobStore, kvs store.KvStore) (fs *FS) {
 	// Override supported time format
 	now.TimeFormats = []string{"2006-1-2T15:4:5", "2006-1-2T15:4", "2006-1-2T15", "2006-1-2", "2006-1", "2006"}
-	bs := client.NewBlobStore(server)
-	kvs := client.NewKvStore(server)
 	fs = &FS{
 		bs:       bs,
 		kvs:      kvs,
@@ -132,16 +128,17 @@ func NewFS(server string) (fs *FS) {
 	}
 	return
 }
+
 func (fs *FS) Reload() error {
 	fs.Hosts = []string{}
 	fs.SnapSets = map[string][]*snapshot.Snapshot{}
-	keys, err := fs.kvs.Keys("blobsnap:snapset:", "blobsnap:snapset:\xff", 0)
+	entries, err := fs.kvs.Entries("blobsnap:snapset:", "blobsnap:snapset:\xff", 0)
 	if err != nil {
 		return fmt.Errorf("failed kvs.Keys: %v", err)
 	}
-	for _, kv := range keys {
+	for _, e := range entries {
 		snapshot := &snapshot.Snapshot{}
-		if err := json.Unmarshal([]byte(kv.Value), snapshot); err != nil {
+		if err := json.Unmarshal([]byte(e.Data), snapshot); err != nil {
 			return fmt.Errorf("failed to unmarshal: %v", err)
 		}
 		_, ok := fs.SnapSets[snapshot.Hostname]
@@ -194,16 +191,17 @@ func NewDir(cfs *FS, dtype DirType, name string, ref string, modTime string, mod
 	return
 }
 
-func (d *Dir) Attr(a *fuse.Attr) {
+func (d *Dir) Attr(ctx context.Context, a *fuse.Attr) error {
 	a.Inode = 1
 	a.Mode = d.Mode
 	if d.ModTime != "" {
 		t, err := time.Parse(time.RFC3339, d.ModTime)
 		if err != nil {
-			panic(fmt.Errorf("error parsing mtime for %v: %v", d, err))
+			return fmt.Errorf("error parsing mtime for %v: %v", d, err)
 		}
 		a.Mtime = t
 	}
+	return nil
 }
 
 func (d *Dir) readDir() (out []fuse.Dirent, ferr error) {
@@ -298,21 +296,20 @@ func (d *Dir) loadDir() (out []fuse.Dirent, err error) {
 		}
 		return out, err
 	case SnapshotsDir:
-		versions, err := d.fs.kvs.Versions(fmt.Sprintf("blobsnap:snapset:%v", d.Ref), 0, int(time.Now().UTC().UnixNano()), 0)
+		versions, err := d.fs.kvs.Versions(fmt.Sprintf("blobsnap:snapset:%v", d.Ref), 0, time.Now().UTC().UnixNano(), 0)
 		if err != nil {
 			panic(err)
 		}
-		for _, kv := range versions.Versions {
+		for _, e := range versions.Versions {
 			snap := &snapshot.Snapshot{}
-			if err := json.Unmarshal([]byte(kv.Value), snap); err != nil {
+			if err := json.Unmarshal([]byte(e.Data), snap); err != nil {
 				panic(err)
 			}
-			stime := time.Unix(0, int64(kv.Version))
+			stime := time.Unix(0, int64(e.Version))
 			sname := stime.Format(time.RFC3339)
 			dirent := fuse.Dirent{Name: sname, Type: fuse.DT_Dir}
 			d.Children[sname] = NewDir(d.fs, SnapshotDir, sname, snap.Ref, "", os.ModeDir, d.Name)
 			out = append(out, dirent)
-
 		}
 		return out, err
 	case SnapshotDir:
@@ -356,18 +353,18 @@ func NewFile(fs *FS, name string, ref string, size int, modTime string, mode os.
 	return f
 }
 
-func (f *File) Attr(a *fuse.Attr) {
+func (f *File) Attr(ctx context.Context, a *fuse.Attr) error {
 	a.Inode = 2
 	a.Mode = f.Mode
 	a.Size = f.Size
 	if f.ModTime != "" {
 		t, err := time.Parse(time.RFC3339, f.ModTime)
 		if err != nil {
-			panic(fmt.Errorf("error parsing mtime for %v: %v", f, err))
+			return fmt.Errorf("error parsing mtime for %v: %v", f, err)
 		}
 		a.Mtime = t
 	}
-
+	return nil
 }
 
 func (f *File) Open(ctx context.Context, req *fuse.OpenRequest, res *fuse.OpenResponse) (fs.Handle, error) {

@@ -1,68 +1,48 @@
 package main
 
 import (
+	"flag"
 	"fmt"
 	"log"
-	"os"
 
-	"github.com/codegangsta/cli"
-
-	"github.com/tsileo/blobsnap/fs"
-	"github.com/tsileo/blobsnap/scheduler"
-	"github.com/tsileo/blobsnap/snapshot"
+	"github.com/antonovvk/blobsnap/fs"
+	"github.com/antonovvk/blobsnap/scheduler"
+	"github.com/antonovvk/blobsnap/snapshot"
+	"github.com/antonovvk/blobsnap/store"
 )
 
-var version = "dev"
+var (
+	fakeBs  = store.FakeBlobStore{}
+	fakeKvs = store.FakeKvStore{}
+	version = "dev"
+
+	//~ host   = flag.String("host", "", "override the real hostname")
+	//~ config = flag.String("config", "", "config file")
+)
 
 func main() {
-	app := cli.NewApp()
-	commonFlags := []cli.Flag{
-		cli.StringFlag{"host", "", "override the real hostname"},
-		cli.StringFlag{"config", "", "config file"},
+	flag.Parse()
+
+	switch flag.Arg(1) {
+	case "put":
+		up, err := snapshot.NewUploader(fakeBs, fakeKvs)
+		defer up.Close()
+		if err != nil {
+			log.Fatalf("failed to initialize uploader: %v", err)
+		}
+		meta, err := up.Put(flag.Arg(2))
+		if err != nil {
+			log.Fatalf("snapshot failed: %v", err)
+		}
+		fmt.Printf("%v", meta.Hash)
+	case "mount":
+		stop := make(chan bool, 1)
+		stopped := make(chan bool, 1)
+		fs.Mount(fakeBs, fakeKvs, flag.Arg(2), stop, stopped)
+	case "scheduler":
+		up, _ := snapshot.NewUploader(fakeBs, fakeKvs)
+		defer up.Close()
+		d := scheduler.New(up)
+		d.Run()
 	}
-	app.Name = "blobsnap"
-	app.Usage = "BlobSnap command-line tool"
-	app.Version = version
-	app.Commands = []cli.Command{
-		{
-			Name:  "put",
-			Usage: "Upload a file/directory",
-			Flags: commonFlags,
-			Action: func(c *cli.Context) {
-				up, err := snapshot.NewUploader(c.String("host"))
-				defer up.Close()
-				if err != nil {
-					log.Fatalf("failed to initialize uploader: %v", err)
-				}
-				meta, err := up.Put(c.Args().First())
-				if err != nil {
-					log.Fatalf("snapshot failed: %v", err)
-				}
-				fmt.Printf("%v", meta.Hash)
-			},
-		},
-		{
-			Name:  "mount",
-			Usage: "Mount the read-only filesystem to the given path",
-			Flags: commonFlags,
-			Action: func(c *cli.Context) {
-				stop := make(chan bool, 1)
-				stopped := make(chan bool, 1)
-				fs.Mount(c.String("host"), c.Args().First(), stop, stopped)
-			},
-		},
-		{
-			Name:      "scheduler",
-			ShortName: "sched",
-			Usage:     "Start the backup scheduler",
-			Flags:     commonFlags,
-			Action: func(c *cli.Context) {
-				up, _ := snapshot.NewUploader(c.Args().First())
-				defer up.Close()
-				d := scheduler.New(up)
-				d.Run()
-			},
-		},
-	}
-	app.Run(os.Args)
 }

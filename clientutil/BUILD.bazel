@@ -1,0 +1,32 @@
+load("@io_bazel_rules_go//go:def.bzl", "go_library", "go_test")
+
+go_library(
+    name = "go_default_library",
+    srcs = [
+        "dirreader.go",
+        "dirwriter.go",
+        "filereader.go",
+        "filewriter.go",
+        "meta.go",
+        "uploader.go",
+        "utils.go",
+    ],
+    importpath = "github.com/antonovvk/blobsnap/clientutil",
+    visibility = ["//visibility:public"],
+    deps = [
+        "//chunker:go_default_library",
+        "//store:go_default_library",
+        "@com_github_dchest_blake2b//:go_default_library",
+        "@com_github_dustin_go_humanize//:go_default_library",
+        "@com_github_hashicorp_golang_lru//:go_default_library",
+        "@com_github_sabhiram_go_git_ignore//:go_default_library",
+        "@com_github_workiva_go_datastructures//trie/yfast:go_default_library",
+    ],
+)
+
+go_test(
+    name = "go_default_test",
+    srcs = ["uploader_test.go"],
+    embed = [":go_default_library"],
+    deps = ["//store:go_default_library"],
+)

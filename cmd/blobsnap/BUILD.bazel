@@ -1,0 +1,20 @@
+load("@io_bazel_rules_go//go:def.bzl", "go_binary", "go_library")
+
+go_library(
+    name = "go_default_library",
+    srcs = ["blobsnap.go"],
+    importpath = "github.com/antonovvk/blobsnap/cmd/blobsnap",
+    visibility = ["//visibility:private"],
+    deps = [
+        "//fs:go_default_library",
+        "//scheduler:go_default_library",
+        "//snapshot:go_default_library",
+        "//store:go_default_library",
+    ],
+)
+
+go_binary(
+    name = "blobsnap",
+    embed = [":go_default_library"],
+    visibility = ["//visibility:public"],
+)
