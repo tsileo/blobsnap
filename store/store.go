@@ -4,13 +4,13 @@ type BlobStore interface {
 	Stat(hash string) (bool, error)
 	Get(hash string) ([]byte, error)
 	Put(hash string, data []byte) error
+	Close()
 }
 
 type Entry struct {
 	Version int64  `json:"ver"`
 	Key     string `json:"key,omitempty"`
-	Hash    string `json:"hash,omitempty"`
-	Data    string `json:"data,omitempty"`
+	Data    []byte `json:"data,omitempty"`
 }
 
 type EntryVersions struct {
@@ -19,7 +19,8 @@ type EntryVersions struct {
 }
 
 type KvStore interface {
-	Put(key, data string, ver int64) error
+	Put(key string, data []byte, ver int64) error
 	Entries(begin, end string, limit int) ([]*Entry, error)
 	Versions(key string, begin, end int64, limit int) (*EntryVersions, error)
+	Close()
 }

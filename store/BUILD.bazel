@@ -3,9 +3,11 @@ load("@io_bazel_rules_go//go:def.bzl", "go_library")
 go_library(
     name = "go_default_library",
     srcs = [
+        "bolt.go",
         "fake.go",
         "store.go",
     ],
     importpath = "github.com/antonovvk/blobsnap/store",
     visibility = ["//visibility:public"],
+    deps = ["@com_github_boltdb_bolt//:go_default_library"],
 )

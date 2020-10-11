@@ -108,3 +108,15 @@ go_repository(
     importpath = "gopkg.in/yaml.v2",
     tag = "v2.2.2",
 )
+
+go_repository(
+    name = "com_github_boltdb_bolt",
+    importpath = "github.com/boltdb/bolt",
+    tag = "v1.3.1",
+)
+
+go_repository(
+    name = "com_github_nikitaksv_yandex_disk_sdk_go",
+    importpath = "github.com/nikitaksv/yandex-disk-sdk-go",
+    tag = "v1.0.2",
+)

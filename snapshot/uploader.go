@@ -96,7 +96,7 @@ func (up *Uploader) Put(path string) (*clientutil.Meta, error) {
 	if err != nil {
 		return nil, err
 	}
-	err = up.kvs.Put(fmt.Sprintf("blobsnap:snapset:%v", snap.SnapSetKey), string(snapjs), t.UnixNano())
+	err = up.kvs.Put(fmt.Sprintf("blobsnap:snapset:%v", snap.SnapSetKey), snapjs, t.UnixNano())
 	if err != nil {
 		return nil, err
 	}

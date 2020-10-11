@@ -138,7 +138,7 @@ func (fs *FS) Reload() error {
 	}
 	for _, e := range entries {
 		snapshot := &snapshot.Snapshot{}
-		if err := json.Unmarshal([]byte(e.Data), snapshot); err != nil {
+		if err := json.Unmarshal(e.Data, snapshot); err != nil {
 			return fmt.Errorf("failed to unmarshal: %v", err)
 		}
 		_, ok := fs.SnapSets[snapshot.Hostname]
@@ -302,7 +302,7 @@ func (d *Dir) loadDir() (out []fuse.Dirent, err error) {
 		}
 		for _, e := range versions.Versions {
 			snap := &snapshot.Snapshot{}
-			if err := json.Unmarshal([]byte(e.Data), snap); err != nil {
+			if err := json.Unmarshal(e.Data, snap); err != nil {
 				panic(err)
 			}
 			stime := time.Unix(0, int64(e.Version))

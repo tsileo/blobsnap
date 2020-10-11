@@ -108,7 +108,7 @@ func (j *Job) String() string {
 }
 
 // Value serialize the job.Prev/job.Next to store as a string in the DB.
-func (j *Job) Value() string {
+func (j *Job) Value() []byte {
 	prev := "0"
 	next := "0"
 	if !j.Prev.IsZero() {
@@ -117,7 +117,7 @@ func (j *Job) Value() string {
 	if !j.Next.IsZero() {
 		next = j.Next.Format(time.RFC3339)
 	}
-	return fmt.Sprintf("%v %v", prev, next)
+	return []byte(fmt.Sprintf("%v %v", prev, next))
 }
 
 // Scan job parse the previously serialized value stored in the DB.

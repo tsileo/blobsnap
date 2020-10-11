@@ -15,10 +15,14 @@ func (bs FakeBlobStore) Put(hash string, data []byte) error {
     return nil
 }
 
+func (bs FakeBlobStore) Close() {
+    return
+}
+
 type FakeKvStore struct {
 }
 
-func (kvs FakeKvStore) Put(key, data string, ver int64) error {
+func (kvs FakeKvStore) Put(key string, data []byte, ver int64) error {
     return nil
 }
 
@@ -28,4 +32,8 @@ func (kvs FakeKvStore) Entries(begin, end string, limit int) ([]*Entry, error) {
 
 func (kvs FakeKvStore) Versions(key string, begin, end int64, limit int) (*EntryVersions, error) {
     return nil, nil
+}
+
+func (kvs FakeKvStore) Close() {
+    return
 }
