@@ -103,8 +103,7 @@ func (j *Job) Run() error {
 }
 
 func (j *Job) String() string {
-	return fmt.Sprintf("Job %v:%v/prev:%v/next:%v)",
-		j.config.Path, j.config.Spec, j.Prev, j.Next)
+	return fmt.Sprintf("Job %v:%v/prev:%v/next:%v)", j.config.Path, j.config.Spec, j.Prev, j.Next)
 }
 
 // Value serialize the job.Prev/job.Next to store as a string in the DB.

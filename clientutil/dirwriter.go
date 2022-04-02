@@ -10,7 +10,7 @@ import (
 	"sync"
 	"time"
 
-	gignore "github.com/sabhiram/go-git-ignore"
+	gignore "github.com/sabhiram/go-gitignore"
 )
 
 // node represents either a file or directory in the directory tree

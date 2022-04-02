@@ -1,7 +1,7 @@
 package clientutil
 
 import (
-	gignore "github.com/sabhiram/go-git-ignore"
+	gignore "github.com/sabhiram/go-gitignore"
 	"github.com/antonovvk/blobsnap/store"
 )
 
