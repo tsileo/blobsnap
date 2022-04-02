@@ -5,6 +5,7 @@ go_library(
     srcs = [
         "bolt.go",
         "fake.go",
+        "file.go",
         "store.go",
     ],
     importpath = "github.com/antonovvk/blobsnap/store",
