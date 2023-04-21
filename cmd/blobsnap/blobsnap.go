@@ -1,12 +1,13 @@
 package main
 
 import (
+	"encoding/json"
 	"flag"
 	"fmt"
 	"log"
 
 	"github.com/antonovvk/blobsnap/fs"
-	"github.com/antonovvk/blobsnap/scheduler"
+	//~ "github.com/antonovvk/blobsnap/scheduler"
 	"github.com/antonovvk/blobsnap/snapshot"
 	"github.com/antonovvk/blobsnap/store"
 )
@@ -38,26 +39,36 @@ func main() {
 		}
 	}
 
-	switch flag.Arg(1) {
+	fmt.Println(flag.Args())
+
+	switch flag.Arg(0) {
 	case "put":
 		up, err := snapshot.NewUploader(blobStore, kvStore)
 		defer up.Close()
 		if err != nil {
 			log.Fatalf("failed to initialize uploader: %v", err)
 		}
-		meta, err := up.Put(flag.Arg(2))
+		fmt.Println("PUT")
+		meta, err := up.Put(flag.Arg(1))
 		if err != nil {
 			log.Fatalf("snapshot failed: %v", err)
 		}
-		fmt.Printf("%v", meta.Hash)
+		fmt.Printf("META %v\n", meta.Hash)
 	case "mount":
 		stop := make(chan bool, 1)
 		stopped := make(chan bool, 1)
-		fs.Mount(blobStore, kvStore, flag.Arg(2), stop, stopped)
-	case "scheduler":
-		up, _ := snapshot.NewUploader(blobStore, kvStore)
-		defer up.Close()
-		d := scheduler.New(up)
-		d.Run()
+		fs.Mount(blobStore, kvStore, flag.Arg(1), stop, stopped)
+	case "dump_kv":
+		res, err := kvStore.Dump()
+		if err != nil {
+			log.Fatalf("kv_entries failed: %v", err)
+		}
+		out, _ := json.MarshalIndent(res, "", "  ")
+		fmt.Println(string(out))
+	//~ case "scheduler":
+		//~ up, _ := snapshot.NewUploader(blobStore, kvStore)
+		//~ defer up.Close()
+		//~ d := scheduler.New(up)
+		//~ d.Run()
 	}
 }

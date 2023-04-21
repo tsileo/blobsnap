@@ -22,11 +22,15 @@ func (bs FakeBlobStore) Close() {
 type FakeKvStore struct {
 }
 
+func (kvs FakeKvStore) Dump() (Entries, error) {
+	return nil, nil
+}
+
 func (kvs FakeKvStore) Put(key string, data []byte, ver int64) error {
     return nil
 }
 
-func (kvs FakeKvStore) Entries(begin, end string, limit int) ([]*Entry, error) {
+func (kvs FakeKvStore) Entries(begin, end string, limit int) (Entries, error) {
     return nil, nil
 }
 

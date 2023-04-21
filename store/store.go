@@ -13,14 +13,17 @@ type Entry struct {
 	Data    []byte `json:"data,omitempty"`
 }
 
+type Entries []*Entry
+
 type EntryVersions struct {
 	Key      string   `json:"key"`
 	Versions []*Entry `json:"versions"`
 }
 
 type KvStore interface {
+	Dump() (Entries, error)
 	Put(key string, data []byte, ver int64) error
-	Entries(begin, end string, limit int) ([]*Entry, error)
+	Entries(begin, end string, limit int) (Entries, error)
 	Versions(key string, begin, end int64, limit int) (*EntryVersions, error)
 	Close()
 }

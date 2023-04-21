@@ -7,7 +7,7 @@ import (
 	"io"
 	"sort"
 
-	"github.com/boltdb/bolt"
+	bolt "go.etcd.io/bbolt"
 )
 
 type BoltKvStore struct {
@@ -19,6 +19,14 @@ func NewBoltKbStore(dbFileName string) (*BoltKvStore, error) {
 	if err != nil {
 		return nil, err
 	}
+	for _, bucket := range []string{"entries"} {
+		if err := db.Update(func(tx *bolt.Tx) error {
+			_, err := tx.CreateBucketIfNotExists([]byte(bucket))
+			return err
+		}); err != nil {
+			return nil, fmt.Errorf("Failed to create bucket %s: %v", bucket, err)
+		}
+	}
 	return &BoltKvStore{db}, nil
 }
 
@@ -28,10 +36,11 @@ func (kvs BoltKvStore) Put(key string, data []byte, ver int64) error {
 
 		var ver int64
 		v := b.Get([]byte(key))
-		if ent, err := decodeOne(key, bytes.NewReader(v)); err != nil {
+		ent := Entries{}
+		if err := ent.decodeOne(key, bytes.NewReader(v)); err != nil {
 			return err
-		} else if ent != nil {
-			ver = ent.Version
+		} else if len(ent) != 0 {
+			ver = ent[0].Version
 		}
 		ver++
 		buf := &bytes.Buffer{}
@@ -41,16 +50,21 @@ func (kvs BoltKvStore) Put(key string, data []byte, ver int64) error {
 	})
 }
 
-func (kvs BoltKvStore) Entries(begin, end string, limit int) (res []*Entry, err error) {
+func (kvs BoltKvStore) Dump() (res Entries, err error) {
 	err = kvs.db.View(func(tx *bolt.Tx) error {
-		b := tx.Bucket([]byte("entries"))
+		return tx.Bucket([]byte("entries")).ForEach(func(k, v []byte) error {
+			return res.decodeAll(string(k), bytes.NewReader(v))
+		})
+	})
+	return res, err
+}
 
-		c := b.Cursor()
+func (kvs BoltKvStore) Entries(begin, end string, limit int) (res Entries, err error) {
+	err = kvs.db.View(func(tx *bolt.Tx) error {
+		c := tx.Bucket([]byte("entries")).Cursor()
 		for k, v := c.Seek([]byte(begin)); k != nil && bytes.Compare(k, []byte(end)) <= 0; k, v = c.Next() {
-			if ent, err := decodeOne(string(k), bytes.NewReader(v)); err != nil {
+			if err := res.decodeOne(string(k), bytes.NewReader(v)); err != nil {
 				return err
-			} else if ent != nil {
-				res = append(res, ent)
 			}
 		}
 		return nil
@@ -63,8 +77,8 @@ func (kvs BoltKvStore) Versions(key string, begin, end int64, limit int) (res *E
 		b := tx.Bucket([]byte("entries"))
 
 		v := b.Get([]byte(key))
-		vers, err := decodeAll(key, bytes.NewReader(v))
-		if err != nil {
+		vers := Entries{}
+		if err := vers.decodeAll(key, bytes.NewReader(v)); err != nil {
 			return err
 		}
 		res = &EntryVersions{Key: key}
@@ -88,40 +102,40 @@ func (kvs BoltKvStore) Close() {
 	}
 }
 
-func decodeAll(key string, r io.Reader) (res []*Entry, err error) {
+func (es *Entries) decodeAll(key string, r io.Reader) error {
 	for {
-		if ent, err := decodeOne(key, r); err != nil {
-			return nil, err
-		} else if ent != nil {
-			res = append(res, ent)
-		} else {
+		n := len(*es)
+		if err := es.decodeOne(key, r); err != nil {
+			return err
+		} else if len(*es) == n {
 			break
 		}
 	}
-	return res, nil
+	return nil
 }
 
 type header struct {
 	Ver int64
-	Len int
+	Len int64
 }
 
-func decodeOne(key string, r io.Reader) (res *Entry, err error) {
+func (es *Entries) decodeOne(key string, r io.Reader) error {
 	h := header{}
 	if err := binary.Read(r, binary.LittleEndian, &h); err != nil {
 		if err == io.EOF {
 			err = nil
 		}
-		return nil, err
+		return err
 	}
 	data := make([]byte, h.Len)
 	if _, err := io.ReadFull(r, data); err != nil {
-		return nil, fmt.Errorf("Failed to read data for key: %s ver: %d error: %v", key, h.Ver, err)
+		return fmt.Errorf("Failed to read data for key: %s ver: %d error: %v", key, h.Ver, err)
 	}
-	return &Entry{Version: h.Ver, Key: key, Data: data}, nil
+	*es = append(*es, &Entry{Version: h.Ver, Key: key, Data: data})
+	return nil
 }
 
 func encodeOne(w io.Writer, ver int64, data []byte) {
-	binary.Write(w, binary.LittleEndian, header{ver, len(data)})
+	binary.Write(w, binary.LittleEndian, header{ver, int64(len(data))})
 	w.Write(data)
 }

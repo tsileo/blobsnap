@@ -35,7 +35,7 @@ type Snapshot struct {
 	Path        string                  `json:"path"`
 	Hostname    string                  `json:"hostname"`
 	Ref         string                  `json:"ref"`
-	Time        int                     `json:"time"`
+	Time        int64                   `json:"time"`
 	SnapSetKey  string                  `json:"key"`
 	Comment     string                  `json:"comment,omitempty"`
 	WriteResult *clientutil.WriteResult `json:"wr"`
@@ -88,7 +88,7 @@ func (up *Uploader) Put(path string) (*clientutil.Meta, error) {
 		Path:        filepath.Clean(path),
 		Hostname:    hostname,
 		Ref:         meta.Hash,
-		Time:        int(t.Unix()),
+		Time:        t.Unix(),
 		WriteResult: wr,
 	}
 	snap.SnapSetKey = snap.ComputeSnapSetKey()
@@ -96,8 +96,8 @@ func (up *Uploader) Put(path string) (*clientutil.Meta, error) {
 	if err != nil {
 		return nil, err
 	}
-	err = up.kvs.Put(fmt.Sprintf("blobsnap:snapset:%v", snap.SnapSetKey), snapjs, t.UnixNano())
-	if err != nil {
+	log.Println("Created snapshot", snap.SnapSetKey, string(snapjs))
+	if err := up.kvs.Put(fmt.Sprintf("blobsnap:snapset:%v", snap.SnapSetKey), snapjs, t.UnixNano()); err != nil {
 		return nil, err
 	}
 	return meta, nil

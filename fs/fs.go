@@ -1,5 +1,4 @@
 /*
-
 Implements a FUSE filesystem, with a focus on snapshots.
 
 The root directory contains two specials directory:
@@ -8,7 +7,6 @@ The root directory contains two specials directory:
 - **snapshots**, it contains a list of directory with the file/dir name, and inside this directory,
 a list of directory: one directory per snapshots, and finally inside this dir,
 the file/dir (e.g /datadb/mnt/snapshots/writing/2014-05-04T17:42:48+02:00/writing).
-
 */
 package fs
 
@@ -137,6 +135,7 @@ func (fs *FS) Reload() error {
 		return fmt.Errorf("failed kvs.Keys: %v", err)
 	}
 	for _, e := range entries {
+		log.Printf("entry: %s", string(e.Data))
 		snapshot := &snapshot.Snapshot{}
 		if err := json.Unmarshal(e.Data, snapshot); err != nil {
 			return fmt.Errorf("failed to unmarshal: %v", err)
@@ -191,6 +190,10 @@ func NewDir(cfs *FS, dtype DirType, name string, ref string, modTime string, mod
 	return
 }
 
+func (d Dir) String() string {
+	return fmt.Sprintf("DIR %s mode=%d type=%s fs=%v", d.Name, d.Mode, d.Type, *d.fs)
+}
+
 func (d *Dir) Attr(ctx context.Context, a *fuse.Attr) error {
 	a.Inode = 1
 	a.Mode = d.Mode
@@ -215,6 +218,7 @@ func (d *Dir) readDir() (out []fuse.Dirent, ferr error) {
 			if err != nil {
 				return nil, fmt.Errorf("failed to fetch meta: %v", err)
 			}
+			log.Printf("meta: %v", meta)
 			var dirent fuse.Dirent
 			if meta.Type == "file" {
 				dirent = fuse.Dirent{Name: meta.Name, Type: fuse.DT_File}
@@ -231,11 +235,11 @@ func (d *Dir) readDir() (out []fuse.Dirent, ferr error) {
 
 func (d *Dir) Lookup(ctx context.Context, name string) (fs.Node, error) {
 	log.Printf("OP Lookup %v", name)
-	log.Printf("DEBUG %+v", d)
+	log.Printf("DEBUG %+s", d)
 	if len(d.Children) == 0 {
 		d.loadDir()
 	}
-	log.Printf("DEBUG %+v", d)
+	log.Printf("DEBUG %+s", d)
 	fs, ok := d.Children[name]
 	if ok {
 		return fs, nil
@@ -244,12 +248,12 @@ func (d *Dir) Lookup(ctx context.Context, name string) (fs.Node, error) {
 }
 
 func (d *Dir) ReadDirAll(ctx context.Context) (out []fuse.Dirent, err error) {
-	log.Printf("OP ReadDirAll %v", d)
+	log.Printf("OP ReadDirAll %s", d)
 	return d.loadDir()
 }
 
 func (d *Dir) loadDir() (out []fuse.Dirent, err error) {
-	log.Printf("OP loadDir %v", d)
+	log.Printf("OP loadDir %s", d)
 	// TODO only reload when needed
 	switch d.Type {
 	case Root:
@@ -305,7 +309,7 @@ func (d *Dir) loadDir() (out []fuse.Dirent, err error) {
 			if err := json.Unmarshal(e.Data, snap); err != nil {
 				panic(err)
 			}
-			stime := time.Unix(0, int64(e.Version))
+			stime := time.Unix(snap.Time, 0)
 			sname := stime.Format(time.RFC3339)
 			dirent := fuse.Dirent{Name: sname, Type: fuse.DT_Dir}
 			d.Children[sname] = NewDir(d.fs, SnapshotDir, sname, snap.Ref, "", os.ModeDir, d.Name)

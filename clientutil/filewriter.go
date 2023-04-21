@@ -48,11 +48,11 @@ func (up *Uploader) writeReader(f io.Reader, meta *Meta) (*WriteResult, error) {
 			// Check if the blob exists
 			exists, err := up.bs.Stat(nsha)
 			if err != nil {
-				panic(fmt.Sprintf("DB error: %v", err))
+				return nil, fmt.Errorf("Blob storage stat error: %v", err)
 			}
 			if !exists {
 				if err := up.bs.Put(nsha, buf.Bytes()); err != nil {
-					panic(fmt.Errorf("failed to PUT blob %v", err))
+					return nil, fmt.Errorf("Blob storage put error: %v", err)
 				}
 				writeResult.BlobsUploaded++
 				writeResult.SizeUploaded += buf.Len()
