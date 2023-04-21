@@ -9,6 +9,7 @@ go_library(
         "//fs",
         "//snapshot",
         "//store",
+        "@com_github_inconshreveable_log15//:log15",
     ],
 )
 

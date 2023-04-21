@@ -9,6 +9,7 @@ go_library(
         "//clientutil",
         "//snapshot",
         "//store",
+        "@com_github_inconshreveable_log15//:log15",
         "@com_github_jinzhu_now//:now",
         "@org_bazil_fuse//:fuse",
         "@org_bazil_fuse//fs",

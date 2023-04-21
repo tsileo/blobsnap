@@ -10,5 +10,5 @@ go_library(
     ],
     importpath = "github.com/antonovvk/blobsnap/store",
     visibility = ["//visibility:public"],
-    deps = ["@io_etcd_go_bbolt//:go_default_library"],
+    deps = ["@io_etcd_go_bbolt//:bbolt"],
 )

@@ -9,5 +9,6 @@ go_library(
         "//clientutil",
         "//store",
         "@com_github_dchest_blake2b//:blake2b",
+        "@com_github_inconshreveable_log15//:log15",
     ],
 )

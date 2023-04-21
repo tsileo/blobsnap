@@ -4,12 +4,12 @@ import (
 	"encoding/json"
 	"flag"
 	"fmt"
-	"log"
 
 	"github.com/antonovvk/blobsnap/fs"
 	//~ "github.com/antonovvk/blobsnap/scheduler"
 	"github.com/antonovvk/blobsnap/snapshot"
 	"github.com/antonovvk/blobsnap/store"
+	log "github.com/inconshreveable/log15"
 )
 
 var (
@@ -35,7 +35,8 @@ func main() {
 	if *localKv != "" {
 		var err error
 		if kvStore, err = store.NewBoltKbStore(*localKv); err != nil {
-			log.Fatalf("failed to initialize BoltDB KV store: %v", err)
+			log.Crit("failed to initialize BoltDB KV store", "error", err)
+			return
 		}
 	}
 
@@ -46,12 +47,13 @@ func main() {
 		up, err := snapshot.NewUploader(blobStore, kvStore)
 		defer up.Close()
 		if err != nil {
-			log.Fatalf("failed to initialize uploader: %v", err)
+			log.Crit("Failed to initialize uploader", "error", err)
+			return
 		}
-		fmt.Println("PUT")
 		meta, err := up.Put(flag.Arg(1))
 		if err != nil {
-			log.Fatalf("snapshot failed: %v", err)
+			log.Crit("Put failed", "error", err)
+			return
 		}
 		fmt.Printf("META %v\n", meta.Hash)
 	case "mount":
@@ -61,7 +63,8 @@ func main() {
 	case "dump_kv":
 		res, err := kvStore.Dump()
 		if err != nil {
-			log.Fatalf("kv_entries failed: %v", err)
+			log.Crit("Dump failed", "error", err)
+			return
 		}
 		out, _ := json.MarshalIndent(res, "", "  ")
 		fmt.Println(string(out))

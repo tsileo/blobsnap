@@ -3,6 +3,7 @@ bazel-*
 .idea/*
 .sync/*
 .DS_Store
+tmp*
 **/*.pyc
 *~
 **/node_modules/**

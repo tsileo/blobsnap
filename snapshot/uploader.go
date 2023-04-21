@@ -3,7 +3,6 @@ package snapshot
 import (
 	"encoding/json"
 	"fmt"
-	"log"
 	"os"
 	"path/filepath"
 	"time"
@@ -11,6 +10,7 @@ import (
 	"github.com/antonovvk/blobsnap/clientutil"
 	"github.com/antonovvk/blobsnap/store"
 	"github.com/dchest/blake2b"
+	log "github.com/inconshreveable/log15"
 )
 
 type Uploader struct {
@@ -76,7 +76,7 @@ func (up *Uploader) Put(path string) (*clientutil.Meta, error) {
 		return meta, err
 	}
 	if wr.SizeUploaded == 0 {
-		log.Println("Nothing has been uploaded, no snapshot will be created.")
+		log.Debug("Nothing has been uploaded, no snapshot will be created.")
 		return meta, nil
 	}
 	hostname, err := os.Hostname()
@@ -96,7 +96,7 @@ func (up *Uploader) Put(path string) (*clientutil.Meta, error) {
 	if err != nil {
 		return nil, err
 	}
-	log.Println("Created snapshot", snap.SnapSetKey, string(snapjs))
+	log.Info("Created snapshot", "key", snap.SnapSetKey, "snapshot", snapjs)
 	if err := up.kvs.Put(fmt.Sprintf("blobsnap:snapset:%v", snap.SnapSetKey), snapjs, t.UnixNano()); err != nil {
 		return nil, err
 	}

@@ -15,7 +15,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
-	"log"
 	"os"
 	"os/signal"
 	"path/filepath"
@@ -28,6 +27,7 @@ import (
 	"github.com/antonovvk/blobsnap/clientutil"
 	"github.com/antonovvk/blobsnap/snapshot"
 	"github.com/antonovvk/blobsnap/store"
+	log "github.com/inconshreveable/log15"
 )
 
 type DirType int
@@ -64,28 +64,31 @@ func (dt DirType) String() string {
 
 // Mount the filesystem to the given mountpoint
 func Mount(bs store.BlobStore, kvs store.KvStore, mountpoint string, stop <-chan bool, stopped chan<- bool) {
+	logger := log.New("mountpoint", mountpoint)
+
 	c, err := fuse.Mount(mountpoint)
 	if err != nil {
-		log.Fatal(err)
+		logger.Crit("Mount failed", "error", err)
+		return
 	}
 	defer c.Close()
-	log.Printf("Mounting read-only filesystem on %v\nCtrl+C to unmount.", mountpoint)
+	logger.Info("Mounting read-only filesystem. Ctrl+C to unmount.")
 
 	cs := make(chan os.Signal, 1)
 	signal.Notify(cs, os.Interrupt)
 	go func() {
 		select {
 		case <-cs:
-			log.Printf("got signal")
+			logger.Debug("got signal")
 			break
 		case <-stop:
-			log.Printf("got stop")
+			logger.Debug("got stop")
 			break
 		}
-		log.Printf("Unmounting %v...\n", mountpoint)
+		logger.Info("Unmounting")
 		err := fuse.Unmount(mountpoint)
 		if err != nil {
-			log.Printf("Error unmounting: %v", err)
+			logger.Error("Error unmounting", "error", err)
 		} else {
 			stopped <- true
 		}
@@ -93,12 +96,14 @@ func Mount(bs store.BlobStore, kvs store.KvStore, mountpoint string, stop <-chan
 
 	err = fs.Serve(c, NewFS(bs, kvs))
 	if err != nil {
-		log.Fatal(err)
+		logger.Crit("FS serve failed", "error", err)
+		return
 	}
 	// check if the mount process has an error to report
 	<-c.Ready
 	if err := c.MountError; err != nil {
-		log.Fatal(err)
+		logger.Crit("Mount failed", "error", err)
+		return
 	}
 }
 
@@ -135,7 +140,6 @@ func (fs *FS) Reload() error {
 		return fmt.Errorf("failed kvs.Keys: %v", err)
 	}
 	for _, e := range entries {
-		log.Printf("entry: %s", string(e.Data))
 		snapshot := &snapshot.Snapshot{}
 		if err := json.Unmarshal(e.Data, snapshot); err != nil {
 			return fmt.Errorf("failed to unmarshal: %v", err)
@@ -218,7 +222,6 @@ func (d *Dir) readDir() (out []fuse.Dirent, ferr error) {
 			if err != nil {
 				return nil, fmt.Errorf("failed to fetch meta: %v", err)
 			}
-			log.Printf("meta: %v", meta)
 			var dirent fuse.Dirent
 			if meta.Type == "file" {
 				dirent = fuse.Dirent{Name: meta.Name, Type: fuse.DT_File}
@@ -234,12 +237,10 @@ func (d *Dir) readDir() (out []fuse.Dirent, ferr error) {
 }
 
 func (d *Dir) Lookup(ctx context.Context, name string) (fs.Node, error) {
-	log.Printf("OP Lookup %v", name)
-	log.Printf("DEBUG %+s", d)
+	log.Debug("Lookup", "name", name)
 	if len(d.Children) == 0 {
 		d.loadDir()
 	}
-	log.Printf("DEBUG %+s", d)
 	fs, ok := d.Children[name]
 	if ok {
 		return fs, nil
@@ -248,12 +249,12 @@ func (d *Dir) Lookup(ctx context.Context, name string) (fs.Node, error) {
 }
 
 func (d *Dir) ReadDirAll(ctx context.Context) (out []fuse.Dirent, err error) {
-	log.Printf("OP ReadDirAll %s", d)
+	log.Debug("ReadDirAll", "dir", d)
 	return d.loadDir()
 }
 
 func (d *Dir) loadDir() (out []fuse.Dirent, err error) {
-	log.Printf("OP loadDir %s", d)
+	log.Debug("loadDir", "dir", d)
 	// TODO only reload when needed
 	switch d.Type {
 	case Root:
@@ -383,7 +384,6 @@ func (f *File) Release(ctx context.Context, req *fuse.ReleaseRequest) error {
 }
 
 func (f *File) Read(ctx context.Context, req *fuse.ReadRequest, res *fuse.ReadResponse) error {
-	//log.Printf("Read %+v", f)
 	if req.Offset >= int64(f.Size) {
 		return nil
 	}
@@ -393,7 +393,7 @@ func (f *File) Read(ctx context.Context, req *fuse.ReadRequest, res *fuse.ReadRe
 		err = nil
 	}
 	if err != nil {
-		log.Printf("Error reading FakeFile %+v on %v at %d: %v", f, f.Ref, req.Offset, err)
+		log.Error("Error reading FakeFile", "fakeFile", f, "ref", f.Ref, "offset", req.Offset, "error", err)
 		return fuse.EIO
 	}
 	res.Data = buf[:n]
