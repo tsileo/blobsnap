@@ -6,6 +6,7 @@ require (
 	bazil.org/fuse v0.0.0-20200524192727-fb710f7dfd05
 	github.com/Workiva/go-datastructures v1.0.53
 	github.com/akrylysov/pogreb v0.10.1 // indirect
+	github.com/antonovvk/yandex-disk-sdk-go v0.0.0-20230421142257-691782aafcd1 // indirect
 	github.com/boltdb/bolt v1.3.1
 	github.com/dchest/blake2b v1.0.0
 	github.com/dustin/go-humanize v1.0.0

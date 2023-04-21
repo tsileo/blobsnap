@@ -7,8 +7,13 @@ go_library(
         "fake.go",
         "file.go",
         "store.go",
+        "yadisk.go",
     ],
     importpath = "github.com/antonovvk/blobsnap/store",
     visibility = ["//visibility:public"],
-    deps = ["@io_etcd_go_bbolt//:bbolt"],
+    deps = [
+        "@com_github_antonovvk_yandex_disk_sdk_go//:yandex-disk-sdk-go",
+        "@com_github_inconshreveable_log15//:log15",
+        "@io_etcd_go_bbolt//:bbolt",
+    ],
 )

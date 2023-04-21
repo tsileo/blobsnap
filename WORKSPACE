@@ -82,6 +82,13 @@ go_repository(
     version = "v0.7.0",
 )
 
+go_repository(
+    name = "com_github_antonovvk_yandex_disk_sdk_go",
+    importpath = "github.com/antonovvk/yandex-disk-sdk-go",
+    sum = "h1:TrOIVq17GlUdDWN8Fq2wELq/NXRmy9ac3TdNuO1YqPw=",
+    version = "v0.0.0-20230421142257-691782aafcd1",
+)
+
 gazelle_dependencies()
 
 go_repository(
@@ -220,8 +227,8 @@ go_repository(
 go_repository(
     name = "com_github_stretchr_testify",
     importpath = "github.com/stretchr/testify",
-    sum = "h1:w7B6lhMri9wdJUVmEZPGGhZzrYTPvgJArz7wNPgYKsk=",
-    version = "v1.8.1",
+    sum = "h1:+h33VjcLVPDHtOdpUCuF+7gSuG3yGIftsP1YvFihtJ8=",
+    version = "v1.8.2",
 )
 
 go_repository(

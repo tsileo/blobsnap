@@ -17,6 +17,8 @@ var (
 
 	//~ host   = flag.String("host", "", "override the real hostname")
 	//~ config = flag.String("config", "", "config file")
+	ydKey   = flag.String("yadisk_key", "", "Use YandexDisk as blob storage")
+	ydDir   = flag.String("yadisk_dir", "Приложения/BlobSnap", "YandexDisk app directory")
 	localBs = flag.String("local_bs", "", "Use local blob store")
 	localKv = flag.String("local_kv", "", "Use local KV store")
 )
@@ -26,7 +28,17 @@ func main() {
 
 	var blobStore store.BlobStore
 	blobStore = store.FakeBlobStore{}
-	if *localBs != "" {
+	if *ydKey != "" {
+		yd, err := store.NewYaDiskBlobStore(*ydKey, *ydDir)
+		if err != nil {
+			log.Crit("failed to initialize YaDisk blob store", "error", err)
+			return
+		}
+		if *localBs != "" {
+			yd = yd.WithCache(*localBs)
+		}
+		blobStore = yd
+	} else if *localBs != "" {
 		blobStore = store.NewFileBlobStore(*localBs)
 	}
 
@@ -39,8 +51,6 @@ func main() {
 			return
 		}
 	}
-
-	fmt.Println(flag.Args())
 
 	switch flag.Arg(0) {
 	case "put":

@@ -19,6 +19,7 @@ go_library(
         "@com_github_dchest_blake2b//:blake2b",
         "@com_github_dustin_go_humanize//:go-humanize",
         "@com_github_hashicorp_golang_lru//:golang-lru",
+        "@com_github_inconshreveable_log15//:log15",
         "@com_github_sabhiram_go_gitignore//:go-gitignore",
         "@com_github_workiva_go_datastructures//trie/yfast",
     ],
