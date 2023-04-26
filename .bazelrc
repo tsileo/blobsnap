@@ -1,2 +1,0 @@
-build --genrule_strategy=standalone
-build --spawn_strategy=standalone
