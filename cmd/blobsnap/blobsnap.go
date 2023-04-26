@@ -60,12 +60,10 @@ func main() {
 			log.Crit("Failed to initialize uploader", "error", err)
 			return
 		}
-		meta, err := up.Put(flag.Arg(1))
-		if err != nil {
+		if _, err := up.Put(flag.Arg(1)); err != nil {
 			log.Crit("Put failed", "error", err)
 			return
 		}
-		fmt.Printf("META %v\n", meta.Hash)
 	case "mount":
 		stop := make(chan bool, 1)
 		stopped := make(chan bool, 1)

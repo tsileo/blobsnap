@@ -237,7 +237,6 @@ func (d *Dir) readDir() (out []fuse.Dirent, ferr error) {
 }
 
 func (d *Dir) Lookup(ctx context.Context, name string) (fs.Node, error) {
-	log.Debug("Lookup", "name", name)
 	if len(d.Children) == 0 {
 		d.loadDir()
 	}
@@ -249,12 +248,10 @@ func (d *Dir) Lookup(ctx context.Context, name string) (fs.Node, error) {
 }
 
 func (d *Dir) ReadDirAll(ctx context.Context) (out []fuse.Dirent, err error) {
-	log.Debug("ReadDirAll", "dir", d)
 	return d.loadDir()
 }
 
 func (d *Dir) loadDir() (out []fuse.Dirent, err error) {
-	log.Debug("loadDir", "dir", d)
 	// TODO only reload when needed
 	switch d.Type {
 	case Root:

@@ -9,7 +9,7 @@ import (
 	"github.com/Workiva/go-datastructures/trie/yfast"
 	"github.com/dchest/blake2b"
 	"github.com/hashicorp/golang-lru"
-	log "github.com/inconshreveable/log15"
+	//~ log "github.com/inconshreveable/log15"
 
 	"github.com/antonovvk/blobsnap/store"
 )
@@ -131,7 +131,7 @@ func (f *FakeFile) ReadAt(p []byte, offset int64) (n int, err error) {
 // Low level read function, read a size from an offset
 // Iterate only the needed blobs
 func (f *FakeFile) read(offset, cnt int) ([]byte, error) {
-	log.Debug("FakeFile read", "name", f.name, "offset", offset, "cnt", cnt)
+	//~ log.Debug("FakeFile read", "name", f.name, "offset", offset, "cnt", cnt)
 
 	if cnt < 0 || cnt > f.size {
 		cnt = f.size

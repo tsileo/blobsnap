@@ -7,8 +7,8 @@ import (
 	"net/http"
 	"path"
 
-	log "github.com/inconshreveable/log15"
 	yadisk "github.com/antonovvk/yandex-disk-sdk-go"
+	log "github.com/inconshreveable/log15"
 )
 
 type YaDiskBlobStore struct {
@@ -41,12 +41,16 @@ func (yd YaDiskBlobStore) Stat(hash string) (bool, error) {
 			return true, nil
 		}
 	}
-	link, err := yd.yaDisk.GetResourceDownloadLink(yd.fileName(hash), nil)
-	if err != nil {
-		log.Error("YaDisk resource error", "hash", hash, "error", err)
+	logger := log.New("hash", hash)
+	logger.Debug("YaDisk stat")
+
+	_, err := yd.yaDisk.GetResource(yd.fileName(hash), nil, 0, 0, false, "", "")
+	if e, _ := err.(*yadisk.Error); e != nil && e.ErrorID == "DiskNotFoundError" {
+		return false, nil
+	} else if err != nil {
+		logger.Error("YaDisk resource error", "error", err)
 		return false, nil
 	}
-	log.Debug("YaDisk stat", "link", link.Href)
 	return true, nil
 }
 
@@ -56,48 +60,54 @@ func (yd YaDiskBlobStore) Get(hash string) ([]byte, error) {
 			return data, nil
 		}
 	}
+	logger := log.New("hash", hash)
+	logger.Debug("YaDisk download")
 
 	link, err := yd.yaDisk.GetResourceDownloadLink(yd.fileName(hash), nil)
 	if err != nil {
-		log.Error("YaDisk resource error", "hash", hash, "error", err)
+		logger.Error("YaDisk resource error", "error", err)
 		return nil, err
 	}
 
-	log.Debug("YaDisk download", "link", link.Href)
-
 	data, err := yd.yaDisk.PerformDownload(link)
 	if err != nil {
-		log.Error("YaDisk resource download error", "hash", hash, "error", err)
+		logger.Error("YaDisk resource download error", "error", err)
 		return nil, err
 	}
 
 	if yd.cache != nil {
 		if err := yd.cache.Put(hash, data); err != nil {
-			log.Warn("YaDisk cache error", "hash", hash, "error", err)
+			logger.Warn("YaDisk cache error", "error", err)
 		}
 	}
+
+	logger.Debug("YaDisk download done")
 	return data, nil
 }
 
 func (yd YaDiskBlobStore) Put(hash string, data []byte) (err error) {
+	logger := log.New("hash", hash)
+	logger.Debug("YaDisk upload")
 	link, err := yd.yaDisk.GetResourceUploadLink(yd.fileName(hash), nil, false)
 	if err != nil {
 		return err
 	}
 	if _, err := yd.yaDisk.PerformUpload(link, bytes.NewBuffer(data)); err != nil {
-		log.Error("YaDisk upload error", "hash", hash, "error", err)
+		logger.Error("YaDisk upload error", "error", err)
 		return err
 	}
 
 	status, err := yd.yaDisk.GetOperationStatus(link.OperationID, nil)
 	if err != nil {
-		log.Error("YaDisk upload status error", "hash", hash, "error", err)
+		logger.Error("YaDisk upload status error", "error", err)
 		return err
 	}
 	if status.Status != "success" {
-		log.Error("YaDisk upload failed", "hash", hash, "status", status.Status)
+		logger.Error("YaDisk upload failed", "status", status.Status)
 		return fmt.Errorf("Upload failed: %s", status.Status)
 	}
+
+	logger.Debug("YaDisk upload done")
 	return nil
 }
 

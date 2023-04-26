@@ -61,6 +61,7 @@ func (s *Snapshot) FetchMeta(bs store.BlobStore) (*clientutil.Meta, error) {
 }
 
 func (up *Uploader) Put(path string) (*clientutil.Meta, error) {
+	log.Info("Uploading", "path", path)
 	info, err := os.Stat(path)
 	if os.IsNotExist(err) {
 		return nil, err
@@ -96,7 +97,7 @@ func (up *Uploader) Put(path string) (*clientutil.Meta, error) {
 	if err != nil {
 		return nil, err
 	}
-	log.Info("Created snapshot", "key", snap.SnapSetKey, "snapshot", snap)
+	log.Info("Uploaded", "path", snap.Path, "info", snap.WriteResult)
 	if err := up.kvs.Put(fmt.Sprintf("blobsnap:snapset:%v", snap.SnapSetKey), snapjs, t.UnixNano()); err != nil {
 		return nil, err
 	}
